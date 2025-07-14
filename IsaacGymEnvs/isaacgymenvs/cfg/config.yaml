@@ -57,6 +57,9 @@ force_render: True
 # disables rendering
 headless: False
 
+# DNNE profiling - enables timing of C++ operations for performance analysis
+dnne_profiling: False
+
 # set default task and default training config based on task
 defaults:
   - task: Ant

@@ -30,6 +30,7 @@ import time
 from datetime import datetime
 from os.path import join
 from typing import Dict, Any, Tuple, List, Set
+import json
 
 import gym
 from gym import spaces
@@ -45,7 +46,7 @@ import operator, random
 from copy import deepcopy
 from isaacgymenvs.utils.utils import nested_dict_get_attr, nested_dict_set_attr
 
-from collections import deque
+from collections import deque, defaultdict
 
 import sys
 
@@ -228,6 +229,12 @@ class VecTask(Env):
             self.virtual_display = SmartDisplay(size=SCREEN_CAPTURE_RESOLUTION)
             self.virtual_display.start()
         self.force_render = force_render
+        
+        # Initialize profiling data if enabled
+        self.dnne_profiling = config.get("dnne_profiling", False)
+        if self.dnne_profiling:
+            self.timing_data = defaultdict(lambda: {'count': 0, 'total_ms': 0.0})
+            print(f"[DNNE Profiling] Enabled for {self.__class__.__name__}")
 
         self.sim_params = self.__parse_sim_params(self.cfg["physics_engine"], self.cfg["sim"])
         if self.cfg["physics_engine"] == "physx":
@@ -379,11 +386,28 @@ class VecTask(Env):
         for i in range(self.control_freq_inv):
             if self.force_render:
                 self.render()
-            self.gym.simulate(self.sim)
+            
+            # Time gym.simulate if profiling is enabled
+            if hasattr(self, 'dnne_profiling') and self.dnne_profiling:
+                start_time = time.perf_counter()
+                self.gym.simulate(self.sim)
+                elapsed = time.perf_counter() - start_time
+                self.timing_data['gym.simulate']['count'] += 1
+                self.timing_data['gym.simulate']['total_ms'] += elapsed * 1000
+            else:
+                self.gym.simulate(self.sim)
 
         # to fix!
         if self.device == 'cpu':
-            self.gym.fetch_results(self.sim, True)
+            # Time gym.fetch_results if profiling is enabled
+            if hasattr(self, 'dnne_profiling') and self.dnne_profiling:
+                start_time = time.perf_counter()
+                self.gym.fetch_results(self.sim, True)
+                elapsed = time.perf_counter() - start_time
+                self.timing_data['gym.fetch_results']['count'] += 1
+                self.timing_data['gym.fetch_results']['total_ms'] += elapsed * 1000
+            else:
+                self.gym.fetch_results(self.sim, True)
 
         # compute observations, rewards, resets, ...
         self.post_physics_step()
@@ -404,6 +428,10 @@ class VecTask(Env):
         # asymmetric actor-critic
         if self.num_states > 0:
             self.obs_dict["states"] = self.get_state()
+        
+        # Save timing data periodically if profiling is enabled
+        if self.dnne_profiling and self.control_steps % 100 == 0:
+            self.save_timing_data()
 
         return self.obs_dict, self.rew_buf.to(self.rl_device), self.reset_buf.to(self.rl_device), self.extras
 
@@ -838,3 +866,28 @@ class VecTask(Env):
                         raise Exception("Invalid extern_sample size")
 
         self.first_randomization = False
+    
+    def save_timing_data(self):
+        """Save timing data to JSON file for profiler to read"""
+        if hasattr(self, 'timing_data') and self.timing_data:
+            # Convert timing data to the format expected by the profiler
+            output_data = {}
+            for name, data in self.timing_data.items():
+                if data['count'] > 0:
+                    output_data[name] = {
+                        'count': data['count'],
+                        'total_ms': data['total_ms'],
+                        'avg_ms': data['total_ms'] / data['count']
+                    }
+            
+            # Save to JSON file
+            with open('/tmp/isaacgym_cpp_timings.json', 'w') as f:
+                json.dump(output_data, f, indent=2)
+            
+            if output_data:
+                print(f"[DNNE Profiling] Saved timing data: {list(output_data.keys())}")
+    
+    def __del__(self):
+        """Save timing data on cleanup"""
+        if hasattr(self, 'dnne_profiling') and self.dnne_profiling:
+            self.save_timing_data()
