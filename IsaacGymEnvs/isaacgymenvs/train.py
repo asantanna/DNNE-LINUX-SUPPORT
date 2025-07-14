@@ -207,12 +207,70 @@ def launch_rlg_hydra(cfg: DictConfig):
         with open(os.path.join(experiment_dir, 'config.yaml'), 'w') as f:
             f.write(OmegaConf.to_yaml(cfg))
 
+    # DNNE Profiling: Track first/last step timing
+    import time
+    import json
+    import builtins
+    
+    # Check if profiling is enabled
+    dnne_profiling = cfg.get('dnne_profiling', False) or cfg.get('task', {}).get('dnne_profiling', False)
+    
+    if dnne_profiling:
+        print("[DNNE Profiling] Recording step timing...")
+        # Set global profiling flag and timing storage
+        builtins.DNNE_PROFILING = True
+        builtins.DNNE_FIRST_STEP_TIME = None
+        builtins.DNNE_LAST_STEP_TIME = None
+        builtins.DNNE_TOTAL_ENV_STEPS = 0
+        # Record overall start time for total elapsed
+        start_time = time.perf_counter()
+    
     runner.run({
         'train': not cfg.test,
         'play': cfg.test,
         'checkpoint': cfg.checkpoint,
         'sigma': cfg.sigma if cfg.sigma != '' else None
     })
+    
+    # DNNE Profiling: Save timing data after training
+    if dnne_profiling:
+        try:
+            # Get timing data from builtins
+            first_step_time = getattr(builtins, 'DNNE_FIRST_STEP_TIME', None)
+            last_step_time = getattr(builtins, 'DNNE_LAST_STEP_TIME', None)
+            total_env_steps = getattr(builtins, 'DNNE_TOTAL_ENV_STEPS', 0)
+            
+            if first_step_time and last_step_time and total_env_steps > 0:
+                elapsed_time = last_step_time - first_step_time
+                
+                step_rate_info = {
+                    'step_rate_info': {
+                        'first_step_time': first_step_time,
+                        'last_step_time': last_step_time,
+                        'elapsed_time': elapsed_time,
+                        'total_env_steps': total_env_steps,
+                        'steps_per_second': total_env_steps / elapsed_time if elapsed_time > 0 else 0
+                    }
+                }
+                
+                # Merge with existing C++ timing data if available
+                timing_file = '/tmp/isaacgym_cpp_timings.json'
+                existing_data = {}
+                if os.path.exists(timing_file):
+                    with open(timing_file, 'r') as f:
+                        existing_data = json.load(f)
+                
+                existing_data.update(step_rate_info)
+                
+                with open(timing_file, 'w') as f:
+                    json.dump(existing_data, f, indent=2)
+                
+                print(f"[DNNE Profiling] Recorded {total_env_steps} steps in {elapsed_time:.3f}s")
+                print(f"[DNNE Profiling] Saved step rate: {step_rate_info['step_rate_info']['steps_per_second']:.1f} steps/sec")
+            else:
+                print(f"[DNNE Profiling] No step timing data recorded (first={first_step_time is not None}, last={last_step_time is not None}, steps={total_env_steps})")
+        except Exception as e:
+            print(f"[DNNE Profiling] Error saving timing data: {e}")
 
 
 if __name__ == "__main__":

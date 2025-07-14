@@ -234,6 +234,9 @@ class VecTask(Env):
         self.dnne_profiling = config.get("dnne_profiling", False)
         if self.dnne_profiling:
             self.timing_data = defaultdict(lambda: {'count': 0, 'total_ms': 0.0})
+            self.first_step_time = None
+            self.last_step_time = None
+            self.total_env_steps = 0
             print(f"[DNNE Profiling] Enabled for {self.__class__.__name__}")
 
         self.sim_params = self.__parse_sim_params(self.cfg["physics_engine"], self.cfg["sim"])
@@ -373,6 +376,16 @@ class VecTask(Env):
             Observations, rewards, resets, info
             Observations are dict of observations (currently only one member called 'obs')
         """
+        
+        # Record first and last step times for accurate step rate calculation
+        import builtins
+        if getattr(builtins, 'DNNE_PROFILING', False):
+            current_time = time.perf_counter()
+            if builtins.DNNE_FIRST_STEP_TIME is None:
+                builtins.DNNE_FIRST_STEP_TIME = current_time
+                print(f"[DNNE Profiling] First step at {current_time}")
+            builtins.DNNE_LAST_STEP_TIME = current_time
+            builtins.DNNE_TOTAL_ENV_STEPS += self.num_envs  # Each step processes all environments
 
         # randomize actions
         if self.dr_randomizations.get('actions', None):
@@ -878,6 +891,18 @@ class VecTask(Env):
                         'count': data['count'],
                         'total_ms': data['total_ms'],
                         'avg_ms': data['total_ms'] / data['count']
+                    }
+            
+            # Add step rate calculation if we have timing data
+            if hasattr(self, 'first_step_time') and hasattr(self, 'last_step_time') and self.first_step_time and self.last_step_time:
+                elapsed_time = self.last_step_time - self.first_step_time
+                if elapsed_time > 0 and self.total_env_steps > 0:
+                    output_data['step_rate_info'] = {
+                        'first_step_time': self.first_step_time,
+                        'last_step_time': self.last_step_time,
+                        'elapsed_time': elapsed_time,
+                        'total_env_steps': self.total_env_steps,
+                        'steps_per_second': self.total_env_steps / elapsed_time
                     }
             
             # Save to JSON file
