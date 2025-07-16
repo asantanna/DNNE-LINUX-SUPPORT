@@ -40,9 +40,9 @@ def make(
     else:
         cfg_dict = omegaconf_to_dict(cfg.task)
     
-    # Pass dnne_profiling from root config to task config
-    if cfg is not None and hasattr(cfg, 'dnne_profiling'):
-        cfg_dict['dnne_profiling'] = cfg.dnne_profiling
+    # Pass dnne_cpp_profiling from root config to task config
+    if cfg is not None and hasattr(cfg, 'dnne_cpp_profiling'):
+        cfg_dict['dnne_cpp_profiling'] = cfg.dnne_cpp_profiling
 
     create_rlgpu_env = get_rlgames_env_creator(
         seed=seed,

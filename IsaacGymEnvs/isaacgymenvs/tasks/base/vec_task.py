@@ -41,15 +41,11 @@ from isaacgymenvs.utils.dr_utils import get_property_setter_map, get_property_ge
     get_default_setter_args, apply_random_samples, check_buckets, generate_random_samples
 
 import torch
-
-# Debug print function for consistent logging
-def DNNE_print(message):
-    """Print with [DNNE_DEBUG] prefix for easy grep filtering"""
-    print(f"[DNNE_DEBUG] {message}")
 import numpy as np
 import operator, random
 from copy import deepcopy
 from isaacgymenvs.utils.utils import nested_dict_get_attr, nested_dict_set_attr
+from isaacgymenvs.utils.debug_utils import DNNE_print
 
 from collections import deque, defaultdict
 
@@ -236,13 +232,13 @@ class VecTask(Env):
         self.force_render = force_render
         
         # Initialize profiling data if enabled
-        self.dnne_profiling = config.get("dnne_profiling", False)
-        if self.dnne_profiling:
+        self.dnne_cpp_profiling = config.get("dnne_cpp_profiling", False)
+        if self.dnne_cpp_profiling:
             self.timing_data = defaultdict(lambda: {'count': 0, 'total_ms': 0.0})
             self.first_step_time = None
             self.last_step_time = None
             self.total_env_steps = 0
-            DNNE_print(f"DNNE Profiling: Enabled for {self.__class__.__name__}")
+            DNNE_print(f"C++ profiling enabled for {self.__class__.__name__}")
 
         self.sim_params = self.__parse_sim_params(self.cfg["physics_engine"], self.cfg["sim"])
         if self.cfg["physics_engine"] == "physx":
@@ -386,7 +382,7 @@ class VecTask(Env):
         import builtins
         if getattr(builtins, 'DNNE_PROFILING', False) and builtins.DNNE_FIRST_STEP_TIME is None:
             builtins.DNNE_FIRST_STEP_TIME = time.perf_counter()
-            DNNE_print(f"DNNE Profiling: First step at {builtins.DNNE_FIRST_STEP_TIME}")
+            DNNE_print(f"First step at {builtins.DNNE_FIRST_STEP_TIME}")
 
         # randomize actions
         if self.dr_randomizations.get('actions', None):
@@ -402,7 +398,7 @@ class VecTask(Env):
                 self.render()
             
             # Time gym.simulate if profiling is enabled
-            if hasattr(self, 'dnne_profiling') and self.dnne_profiling:
+            if hasattr(self, 'dnne_cpp_profiling') and self.dnne_cpp_profiling:
                 start_time = time.perf_counter()
                 self.gym.simulate(self.sim)
                 elapsed = time.perf_counter() - start_time
@@ -414,7 +410,7 @@ class VecTask(Env):
         # to fix!
         if self.device == 'cpu':
             # Time gym.fetch_results if profiling is enabled
-            if hasattr(self, 'dnne_profiling') and self.dnne_profiling:
+            if hasattr(self, 'dnne_cpp_profiling') and self.dnne_cpp_profiling:
                 start_time = time.perf_counter()
                 self.gym.fetch_results(self.sim, True)
                 elapsed = time.perf_counter() - start_time
@@ -444,7 +440,7 @@ class VecTask(Env):
             self.obs_dict["states"] = self.get_state()
         
         # Save timing data periodically if profiling is enabled
-        if self.dnne_profiling and self.control_steps % 100 == 0:
+        if self.dnne_cpp_profiling and self.control_steps % 100 == 0:
             self.save_timing_data()
 
         # Record last step time AFTER physics simulation completes
@@ -916,9 +912,19 @@ class VecTask(Env):
                 json.dump(output_data, f, indent=2)
             
             if output_data:
-                DNNE_print(f"DNNE Profiling: Saved timing data: {list(output_data.keys())}")
+                DNNE_print(f"Saved timing data: {list(output_data.keys())}")
     
     def __del__(self):
         """Save timing data on cleanup"""
-        if hasattr(self, 'dnne_profiling') and self.dnne_profiling:
-            self.save_timing_data()
+        # During Python shutdown, some built-ins might not be available
+        # So we need to be careful about what we try to do here
+        try:
+            if hasattr(self, 'dnne_cpp_profiling') and self.dnne_cpp_profiling:
+                self.save_timing_data()
+        except Exception as e:
+            # Try to print warning if print is still available
+            try:
+                print(f"[DNNE_DEBUG] WARNING: Failed to save timing data during cleanup: {e}")
+            except:
+                # If even print fails, we can't do anything
+                pass

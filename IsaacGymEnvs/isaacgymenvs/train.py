@@ -32,10 +32,8 @@
 import os
 import sys
 
-# Debug print function for consistent logging
-def DNNE_print(message):
-    """Print with [DNNE_DEBUG] prefix for easy grep filtering"""
-    print(f"[DNNE_DEBUG] {message}")
+# Import DNNE_print from debug_utils (doesn't import torch)
+from isaacgymenvs.utils.debug_utils import DNNE_print
 
 # Handle rl_games debug version selection BEFORE any rl_games imports
 if os.environ.get('USE_RL_GAMES_DEBUG', '0') == '1':
