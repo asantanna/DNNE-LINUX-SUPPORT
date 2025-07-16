@@ -36,9 +36,6 @@ from .base.vec_task import VecTask
 class Cartpole(VecTask):
 
     def __init__(self, cfg, rl_device, sim_device, graphics_device_id, headless, virtual_screen_capture, force_render):
-        if os.environ.get('PPO_CYCLE_DEBUG', '0') == '1':
-            print("[DNNE_DEBUG] === ENVIRONMENT INITIALIZATION (IsaacGymEnvs) ===")
-        
         self.cfg = cfg
 
         self.reset_dist = self.cfg["env"]["resetDist"]

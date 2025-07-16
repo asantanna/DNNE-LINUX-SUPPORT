@@ -742,7 +742,9 @@ class A2CBase(BaseAlgorithm):
         # PPO_CYCLE_DEBUG check
         import os
         ppo_cycle_debug = os.environ.get('PPO_CYCLE_DEBUG', '0') == '1'
+        ppo_stop_after_cycle = int(os.environ.get('PPO_STOP_AFTER_CYCLE', '0'))
         initial_state_logged = False
+        cycle_count = 0
 
         for n in range(self.horizon_length):
             if self.use_action_masks:
@@ -775,8 +777,18 @@ class A2CBase(BaseAlgorithm):
                 # Log initial state on very first step
                 if n == 0 and not initial_state_logged:
                     initial_state_logged = True
-                    DNNE_print("=== PPO TRAINING LOOP START ===")
+                    cycle_count += 1
+                    DNNE_print(f"=== PPO TRAINING CYCLE {cycle_count} START ===")
                     DNNE_print(f"PPO_INITIAL: First observation: {self.obs['obs'][0][:4].tolist()}")
+                    DNNE_print(f"PPO_INITIAL: Observation shape: {self.obs['obs'].shape}")
+                    
+                    # Log observation normalization parameters if available
+                    if hasattr(self.model, 'running_mean_std'):
+                        rms = self.model.running_mean_std
+                        if hasattr(rms, 'running_mean') and hasattr(rms, 'running_var'):
+                            DNNE_print(f"PPO_INITIAL: Obs normalization - mean: {rms.running_mean[:4].tolist()}")
+                            DNNE_print(f"PPO_INITIAL: Obs normalization - var: {rms.running_var[:4].tolist()}")
+                            DNNE_print(f"PPO_INITIAL: Obs normalization - count: {rms.count}")
                     
                     # Try to access network weights if possible
                     if hasattr(self.model, 'a2c_network'):
@@ -798,6 +810,12 @@ class A2CBase(BaseAlgorithm):
                         
                         if hasattr(network, 'sigma') and hasattr(network.sigma, 'weight'):
                             DNNE_print(f"PPO_INITIAL: Sigma vals: {network.sigma.tolist() if network.sigma.numel() <= 4 else network.sigma[:4].tolist()}")
+                    
+                    # Check if we should stop after this cycle
+                    if ppo_stop_after_cycle > 0 and cycle_count >= ppo_stop_after_cycle:
+                        DNNE_print(f"PPO_STOP: Stopping after {cycle_count} cycle(s) as requested")
+                        import sys
+                        sys.exit(0)
                 
                 action = res_dict['actions'][0, 0].item() if res_dict['actions'].numel() > 0 else 0.0
                 value = res_dict['values'][0].item() if res_dict['values'].numel() > 0 else 0.0
@@ -834,6 +852,14 @@ class A2CBase(BaseAlgorithm):
         batch_dict['returns'] = swap_and_flatten01(mb_returns)
         batch_dict['played_frames'] = self.batch_size
         batch_dict['step_time'] = step_time
+
+        # PPO_CYCLE_DEBUG: Log advantages and returns
+        if ppo_cycle_debug:
+            DNNE_print(f"PPO_BATCH: Advantages shape: {mb_advs.shape}, mean: {mb_advs.mean().item():.4f}, std: {mb_advs.std().item():.4f}")
+            DNNE_print(f"PPO_BATCH: Returns shape: {mb_returns.shape}, mean: {mb_returns.mean().item():.4f}, std: {mb_returns.std().item():.4f}")
+            DNNE_print(f"PPO_BATCH: Values shape: {mb_values.shape}, mean: {mb_values.mean().item():.4f}, std: {mb_values.std().item():.4f}")
+            DNNE_print(f"PPO_BATCH: First 5 advantages: {mb_advs.flatten()[:5].tolist()}")
+            DNNE_print(f"PPO_BATCH: First 5 returns: {mb_returns.flatten()[:5].tolist()}")
 
         return batch_dict
 

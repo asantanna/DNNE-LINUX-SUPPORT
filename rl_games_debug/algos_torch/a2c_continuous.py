@@ -1,4 +1,6 @@
 from rl_games.common import a2c_common
+# Import DNNE_print for PPO cycle debugging
+from rl_games.common.a2c_common import DNNE_print
 from rl_games.algos_torch import torch_ext
 
 from rl_games.algos_torch import central_value
@@ -84,6 +86,10 @@ class A2CAgent(a2c_common.ContinuousA2CBase):
         actions_batch = input_dict['actions']
         obs_batch = input_dict['obs']
         obs_batch = self._preproc_obs(obs_batch)
+        
+        # PPO_CYCLE_DEBUG logging
+        import os
+        ppo_cycle_debug = os.environ.get('PPO_CYCLE_DEBUG', '0') == '1'
 
         lr_mul = 1.0
         curr_e_clip = self.e_clip
@@ -128,6 +134,18 @@ class A2CAgent(a2c_common.ContinuousA2CBase):
 
             loss = a_loss + 0.5 * c_loss * self.critic_coef - entropy * self.entropy_coef + b_loss * self.bounds_loss_coef
             
+            # PPO_CYCLE_DEBUG: Log loss components
+            if ppo_cycle_debug and self.epoch_num <= 1:  # Only log first epoch
+                DNNE_print(f"PPO_GRAD: Batch size: {obs_batch.shape[0]}")
+                DNNE_print(f"PPO_GRAD: Actor loss: {a_loss.item():.6f}")
+                DNNE_print(f"PPO_GRAD: Critic loss: {c_loss.item():.6f}")
+                DNNE_print(f"PPO_GRAD: Entropy: {entropy.mean().item():.6f}")
+                DNNE_print(f"PPO_GRAD: Total loss: {loss.item():.6f}")
+                DNNE_print(f"PPO_GRAD: Advantage mean: {advantage.mean().item():.4f}, std: {advantage.std().item():.4f}")
+                DNNE_print(f"PPO_GRAD: First 5 advantages: {advantage[:5].tolist()}")
+                DNNE_print(f"PPO_GRAD: First 5 old log probs: {old_action_log_probs_batch[:5].tolist()}")
+                DNNE_print(f"PPO_GRAD: First 5 new log probs: {action_log_probs[:5].tolist()}")
+            
             if self.multi_gpu:
                 self.optimizer.zero_grad()
             else:
@@ -143,6 +161,16 @@ class A2CAgent(a2c_common.ContinuousA2CBase):
             kl_dist = torch_ext.policy_kl(mu.detach(), sigma.detach(), old_mu_batch, old_sigma_batch, reduce_kl)
             if rnn_masks is not None:
                 kl_dist = (kl_dist * rnn_masks).sum() / rnn_masks.numel()  #/ sum_mask
+            
+            # PPO_CYCLE_DEBUG: Log KL divergence and policy parameters
+            if ppo_cycle_debug and self.epoch_num <= 1:  # Only log first epoch
+                DNNE_print(f"PPO_GRAD: KL divergence: {kl_dist.item():.6f}")
+                DNNE_print(f"PPO_GRAD: Mu shape: {mu.shape}, mean: {mu.mean().item():.4f}, std: {mu.std().item():.4f}")
+                DNNE_print(f"PPO_GRAD: Sigma shape: {sigma.shape}, mean: {sigma.mean().item():.4f}, std: {sigma.std().item():.4f}")
+                DNNE_print(f"PPO_GRAD: First 5 mu values: {mu[0][:5].tolist()}")
+                DNNE_print(f"PPO_GRAD: First 5 sigma values: {sigma[0][:5].tolist()}")
+                DNNE_print(f"PPO_GRAD: First 5 old mu values: {old_mu_batch[0][:5].tolist()}")
+                DNNE_print(f"PPO_GRAD: First 5 old sigma values: {old_sigma_batch[0][:5].tolist()}")
 
         self.diagnostics.mini_batch(self,
         {
