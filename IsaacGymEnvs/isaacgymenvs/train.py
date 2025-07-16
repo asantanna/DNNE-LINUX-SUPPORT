@@ -29,6 +29,29 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+import os
+import sys
+
+# Debug print function for consistent logging
+def DNNE_print(message):
+    """Print with [DNNE_DEBUG] prefix for easy grep filtering"""
+    print(f"[DNNE_DEBUG] {message}")
+
+# Handle rl_games debug version selection BEFORE any rl_games imports
+if os.environ.get('USE_RL_GAMES_DEBUG', '0') == '1':
+    # Add rl_games_debug parent directory to Python path
+    rl_games_debug_parent = os.path.expanduser("~/DNNE-LINUX-SUPPORT")
+    if rl_games_debug_parent not in sys.path:
+        sys.path.insert(0, rl_games_debug_parent)
+    
+    try:
+        import rl_games_debug
+    except ImportError:
+        raise RuntimeError("USE_RL_GAMES_DEBUG=1 but rl_games_debug module not found. "
+                          "Expected at ~/DNNE-LINUX-SUPPORT/rl_games_debug")
+    sys.modules['rl_games'] = rl_games_debug
+    DNNE_print("Using rl_games_debug instead of rl_games")
+
 import hydra
 
 from omegaconf import DictConfig, OmegaConf
@@ -207,75 +230,12 @@ def launch_rlg_hydra(cfg: DictConfig):
         with open(os.path.join(experiment_dir, 'config.yaml'), 'w') as f:
             f.write(OmegaConf.to_yaml(cfg))
 
-    # DNNE Profiling: Track first/last step timing
-    import time
-    import json
-    import builtins
-    
-    # Check if profiling is enabled
-    dnne_profiling = cfg.get('dnne_profiling', False) or cfg.get('task', {}).get('dnne_profiling', False)
-    
-    # Debug print function for consistent logging
-    def DNNE_print(message):
-        """Print with [DNNE_DEBUG] prefix for easy grep filtering"""
-        print(f"[DNNE_DEBUG] {message}")
-
-    if dnne_profiling:
-        DNNE_print("DNNE Profiling: Recording step timing...")
-        # Set global profiling flag and timing storage
-        builtins.DNNE_PROFILING = True
-        builtins.DNNE_FIRST_STEP_TIME = None
-        builtins.DNNE_LAST_STEP_TIME = None
-        builtins.DNNE_TOTAL_ENV_STEPS = 0
-        # Record overall start time for total elapsed
-        start_time = time.perf_counter()
-    
     runner.run({
         'train': not cfg.test,
         'play': cfg.test,
         'checkpoint': cfg.checkpoint,
         'sigma': cfg.sigma if cfg.sigma != '' else None
     })
-    
-    # DNNE Profiling: Save timing data after training
-    if dnne_profiling:
-        try:
-            # Get timing data from builtins
-            first_step_time = getattr(builtins, 'DNNE_FIRST_STEP_TIME', None)
-            last_step_time = getattr(builtins, 'DNNE_LAST_STEP_TIME', None)
-            total_env_steps = getattr(builtins, 'DNNE_TOTAL_ENV_STEPS', 0)
-            
-            if first_step_time and last_step_time and total_env_steps > 0:
-                elapsed_time = last_step_time - first_step_time
-                
-                step_rate_info = {
-                    'step_rate_info': {
-                        'first_step_time': first_step_time,
-                        'last_step_time': last_step_time,
-                        'elapsed_time': elapsed_time,
-                        'total_env_steps': total_env_steps,
-                        'steps_per_second': total_env_steps / elapsed_time if elapsed_time > 0 else 0
-                    }
-                }
-                
-                # Merge with existing C++ timing data if available
-                timing_file = '/tmp/isaacgym_cpp_timings.json'
-                existing_data = {}
-                if os.path.exists(timing_file):
-                    with open(timing_file, 'r') as f:
-                        existing_data = json.load(f)
-                
-                existing_data.update(step_rate_info)
-                
-                with open(timing_file, 'w') as f:
-                    json.dump(existing_data, f, indent=2)
-                
-                DNNE_print(f"DNNE Profiling: Recorded {total_env_steps} steps in {elapsed_time:.3f}s")
-                DNNE_print(f"DNNE Profiling: Saved step rate: {step_rate_info['step_rate_info']['steps_per_second']:.1f} steps/sec")
-            else:
-                DNNE_print(f"DNNE Profiling: No step timing data recorded (first={first_step_time is not None}, last={last_step_time is not None}, steps={total_env_steps})")
-        except Exception as e:
-            DNNE_print(f"DNNE Profiling: Error saving timing data: {e}")
 
 
 if __name__ == "__main__":
