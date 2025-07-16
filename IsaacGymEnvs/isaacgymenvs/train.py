@@ -215,8 +215,13 @@ def launch_rlg_hydra(cfg: DictConfig):
     # Check if profiling is enabled
     dnne_profiling = cfg.get('dnne_profiling', False) or cfg.get('task', {}).get('dnne_profiling', False)
     
+    # Debug print function for consistent logging
+    def DNNE_print(message):
+        """Print with [DNNE_DEBUG] prefix for easy grep filtering"""
+        print(f"[DNNE_DEBUG] {message}")
+
     if dnne_profiling:
-        print("[DNNE Profiling] Recording step timing...")
+        DNNE_print("DNNE Profiling: Recording step timing...")
         # Set global profiling flag and timing storage
         builtins.DNNE_PROFILING = True
         builtins.DNNE_FIRST_STEP_TIME = None
@@ -265,12 +270,12 @@ def launch_rlg_hydra(cfg: DictConfig):
                 with open(timing_file, 'w') as f:
                     json.dump(existing_data, f, indent=2)
                 
-                print(f"[DNNE Profiling] Recorded {total_env_steps} steps in {elapsed_time:.3f}s")
-                print(f"[DNNE Profiling] Saved step rate: {step_rate_info['step_rate_info']['steps_per_second']:.1f} steps/sec")
+                DNNE_print(f"DNNE Profiling: Recorded {total_env_steps} steps in {elapsed_time:.3f}s")
+                DNNE_print(f"DNNE Profiling: Saved step rate: {step_rate_info['step_rate_info']['steps_per_second']:.1f} steps/sec")
             else:
-                print(f"[DNNE Profiling] No step timing data recorded (first={first_step_time is not None}, last={last_step_time is not None}, steps={total_env_steps})")
+                DNNE_print(f"DNNE Profiling: No step timing data recorded (first={first_step_time is not None}, last={last_step_time is not None}, steps={total_env_steps})")
         except Exception as e:
-            print(f"[DNNE Profiling] Error saving timing data: {e}")
+            DNNE_print(f"DNNE Profiling: Error saving timing data: {e}")
 
 
 if __name__ == "__main__":

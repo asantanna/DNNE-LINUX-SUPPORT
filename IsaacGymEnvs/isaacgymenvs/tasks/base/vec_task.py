@@ -41,6 +41,11 @@ from isaacgymenvs.utils.dr_utils import get_property_setter_map, get_property_ge
     get_default_setter_args, apply_random_samples, check_buckets, generate_random_samples
 
 import torch
+
+# Debug print function for consistent logging
+def DNNE_print(message):
+    """Print with [DNNE_DEBUG] prefix for easy grep filtering"""
+    print(f"[DNNE_DEBUG] {message}")
 import numpy as np
 import operator, random
 from copy import deepcopy
@@ -237,7 +242,7 @@ class VecTask(Env):
             self.first_step_time = None
             self.last_step_time = None
             self.total_env_steps = 0
-            print(f"[DNNE Profiling] Enabled for {self.__class__.__name__}")
+            DNNE_print(f"DNNE Profiling: Enabled for {self.__class__.__name__}")
 
         self.sim_params = self.__parse_sim_params(self.cfg["physics_engine"], self.cfg["sim"])
         if self.cfg["physics_engine"] == "physx":
@@ -381,7 +386,7 @@ class VecTask(Env):
         import builtins
         if getattr(builtins, 'DNNE_PROFILING', False) and builtins.DNNE_FIRST_STEP_TIME is None:
             builtins.DNNE_FIRST_STEP_TIME = time.perf_counter()
-            print(f"[DNNE Profiling] First step at {builtins.DNNE_FIRST_STEP_TIME}")
+            DNNE_print(f"DNNE Profiling: First step at {builtins.DNNE_FIRST_STEP_TIME}")
 
         # randomize actions
         if self.dr_randomizations.get('actions', None):
@@ -911,7 +916,7 @@ class VecTask(Env):
                 json.dump(output_data, f, indent=2)
             
             if output_data:
-                print(f"[DNNE Profiling] Saved timing data: {list(output_data.keys())}")
+                DNNE_print(f"DNNE Profiling: Saved timing data: {list(output_data.keys())}")
     
     def __del__(self):
         """Save timing data on cleanup"""

@@ -181,6 +181,7 @@ class CommonAgent(a2c_continuous.A2CAgent):
         return
 
     def train_epoch(self):
+            
         play_time_start = time.time()
         with torch.no_grad():
             if self.is_rnn:
@@ -252,6 +253,18 @@ class CommonAgent(a2c_continuous.A2CAgent):
         
         epinfos = []
         update_list = self.update_list
+        
+        # PPO cycle debugging
+        ppo_cycle_debug = os.environ.get("PPO_CYCLE_DEBUG")
+        ppo_stop_after_cycle = os.environ.get("PPO_STOP_AFTER_CYCLE")
+        
+        # Write debug output to file if enabled
+        self.ppo_debug_file = None
+        if ppo_cycle_debug:
+            self.ppo_debug_file = open('/tmp/isaacgym_ppo_cycle.log', 'w')
+            self.ppo_debug_file.write(f"[DEBUG] PPO_CYCLE_DEBUG enabled! horizon_length={self.horizon_length}\n")
+            self.ppo_debug_file.flush()
+            print(f"[DEBUG] PPO_CYCLE_DEBUG enabled! Writing to /tmp/isaacgym_ppo_cycle.log")
 
         for n in range(self.horizon_length):
             self.obs, done_env_ids = self._env_reset_done()
@@ -274,6 +287,17 @@ class CommonAgent(a2c_continuous.A2CAgent):
             self.experience_buffer.update_data('rewards', n, shaped_rewards)
             self.experience_buffer.update_data('next_obses', n, self.obs['obs'])
             self.experience_buffer.update_data('dones', n, self.dones)
+            
+            # PPO_CYCLE_DEBUG logging
+            if ppo_cycle_debug and n < 5:
+                action = res_dict['actions'][0, 0].item() if res_dict['actions'].numel() > 0 else 0.0
+                value = res_dict['values'][0].item() if res_dict['values'].numel() > 0 else 0.0
+                reward = rewards[0].item() if rewards.numel() > 0 else 0.0
+                log_msg = f"[PPO_CYCLE] Step {n + 1}: action={action:.4f}, value={value:.4f}, reward={reward:.4f}"
+                print(log_msg)
+                if hasattr(self, 'ppo_debug_file') and self.ppo_debug_file:
+                    self.ppo_debug_file.write(log_msg + "\n")
+                    self.ppo_debug_file.flush()
 
             terminated = infos['terminate'].float()
             terminated = terminated.unsqueeze(-1)
@@ -306,6 +330,34 @@ class CommonAgent(a2c_continuous.A2CAgent):
         batch_dict = self.experience_buffer.get_transformed_list(a2c_common.swap_and_flatten01, self.tensor_list)
         batch_dict['returns'] = a2c_common.swap_and_flatten01(mb_returns)
         batch_dict['played_frames'] = self.batch_size
+        
+        # PPO_CYCLE_DEBUG logging for full buffer
+        if ppo_cycle_debug:
+            log_msgs = []
+            log_msgs.append(f"[PPO_CYCLE] Buffer full ({self.horizon_length} steps) - starting PPO update")
+            # Get actions from experience buffer
+            mb_actions = self.experience_buffer.tensor_dict.get('actions', None)
+            if mb_actions is not None:
+                actions_first_5 = mb_actions[:5, 0, 0].tolist() if mb_actions.shape[0] >= 5 else mb_actions[:, 0, 0].tolist()
+                log_msgs.append(f"[PPO_CYCLE] First 5 actions: {actions_first_5}")
+            log_msgs.append(f"[PPO_CYCLE] First 5 rewards: {mb_rewards[:5, 0].tolist()}")
+            log_msgs.append(f"[PPO_CYCLE] First 5 values: {mb_values[:5, 0].tolist()}")
+            log_msgs.append(f"[PPO_CYCLE] First 5 dones: {mb_fdones[:5, 0].tolist()}")
+            
+            # Print and write to file
+            for msg in log_msgs:
+                print(msg)
+                if hasattr(self, 'ppo_debug_file') and self.ppo_debug_file:
+                    self.ppo_debug_file.write(msg + "\n")
+            
+            if hasattr(self, 'ppo_debug_file') and self.ppo_debug_file:
+                self.ppo_debug_file.close()
+            
+            # Exit if requested
+            if ppo_stop_after_cycle:
+                print("[PPO_CYCLE] First PPO cycle complete - exiting now")
+                import sys
+                sys.exit(0)
 
         return batch_dict
 
