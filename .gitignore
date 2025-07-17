@@ -206,4 +206,6 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 IsaacGymEnvs/runs/
+IsaacGymEnvs/isaacgymenvs/runs/
 IsaacGymEnvs_backup_*/
+
