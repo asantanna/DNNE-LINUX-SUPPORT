@@ -175,6 +175,34 @@ class PPOComponents:
                 bounds_loss = 0.0
             total_loss += self.bounds_loss_coef * bounds_loss
         
+        # PPO_GRAD debug logging to match rl_games
+        import os
+        if os.environ.get('PPO_CYCLE_DEBUG', '0') == '1':
+            print(f"[DNNE_DEBUG] PPO_GRAD: Batch size: {obs.shape[0]}")
+            print(f"[DNNE_DEBUG] PPO_GRAD: Actor loss: {actor_loss.item():.6f}")
+            print(f"[DNNE_DEBUG] PPO_GRAD: Critic loss: {value_loss.item():.6f}")
+            print(f"[DNNE_DEBUG] PPO_GRAD: Entropy: {entropy.item():.6f}")
+            print(f"[DNNE_DEBUG] PPO_GRAD: Total loss: {total_loss.item():.6f}")
+            print(f"[DNNE_DEBUG] PPO_GRAD: Advantage mean: {advantages.mean().item():.4f}, std: {advantages.std().item():.4f}")
+            print(f"[DNNE_DEBUG] PPO_GRAD: First 5 advantages: {advantages[:5].tolist()}")
+            print(f"[DNNE_DEBUG] PPO_GRAD: First 5 old log probs: {old_action_log_probs[:5].tolist()}")
+            print(f"[DNNE_DEBUG] PPO_GRAD: First 5 new log probs: {action_log_probs[:5].tolist()}")
+            
+            if old_mu is not None:  # Additional debug for continuous actions
+                # Compute KL divergence
+                kl_dist = torch.mean(torch.sum(
+                    torch.log(old_sigma / action_std) + 
+                    (action_std**2 + (old_mu - action_mean)**2) / (2.0 * old_sigma**2) - 0.5,
+                    dim=-1
+                ))
+                print(f"[DNNE_DEBUG] PPO_GRAD: KL divergence: {kl_dist.item():.6f}")
+                print(f"[DNNE_DEBUG] PPO_GRAD: Mu shape: {action_mean.shape}, mean: {action_mean.mean().item():.4f}, std: {action_mean.std().item():.4f}")
+                print(f"[DNNE_DEBUG] PPO_GRAD: Sigma shape: {action_std.shape}, mean: {action_std.mean().item():.4f}, std: {action_std.std().item():.4f}")
+                print(f"[DNNE_DEBUG] PPO_GRAD: First 5 mu values: {action_mean[0][:5].tolist()}")
+                print(f"[DNNE_DEBUG] PPO_GRAD: First 5 sigma values: {action_std[0][:5].tolist()}")
+                print(f"[DNNE_DEBUG] PPO_GRAD: First 5 old mu values: {old_mu[0][:5].tolist()}")
+                print(f"[DNNE_DEBUG] PPO_GRAD: First 5 old sigma values: {old_sigma[0][:5].tolist()}")
+        
         # Info dict for logging
         info_dict = {
             'actor_loss': actor_loss.item(),
