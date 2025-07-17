@@ -384,6 +384,16 @@ class VecTask(Env):
             builtins.DNNE_FIRST_STEP_TIME = time.perf_counter()
             DNNE_print(f"First step at {builtins.DNNE_FIRST_STEP_TIME}")
 
+        # Add PPO_CYCLE_DEBUG logging
+        import os
+        if os.environ.get('PPO_CYCLE_DEBUG', '0') == '1':
+            if not hasattr(self, '_step_count'):
+                self._step_count = 0
+            self._step_count += 1
+            from isaacgymenvs.utils.debug_utils import DNNE_print
+            DNNE_print(f"[PPO_CYCLE_DEBUG] VecTask.step() call #{self._step_count}")
+            DNNE_print(f"[PPO_CYCLE_DEBUG] Actions shape: {actions.shape}, device: {actions.device}")
+
         # randomize actions
         if self.dr_randomizations.get('actions', None):
             actions = self.dr_randomizations['actions']['noise_lambda'](actions)
@@ -472,6 +482,14 @@ class VecTask(Env):
         Returns:
             Observation dictionary
         """
+        # Add PPO_CYCLE_DEBUG logging
+        import os
+        if os.environ.get('PPO_CYCLE_DEBUG', '0') == '1':
+            from isaacgymenvs.utils.debug_utils import DNNE_print
+            DNNE_print(f"[PPO_CYCLE_DEBUG] VecTask.reset() called")
+            DNNE_print(f"[PPO_CYCLE_DEBUG] obs_buf shape: {self.obs_buf.shape}")
+            DNNE_print(f"[PPO_CYCLE_DEBUG] Initial obs: min={self.obs_buf.min():.4f}, max={self.obs_buf.max():.4f}, mean={self.obs_buf.mean():.4f}")
+        
         self.obs_dict["obs"] = torch.clamp(self.obs_buf, -self.clip_obs, self.clip_obs).to(self.rl_device)
 
         # asymmetric actor-critic

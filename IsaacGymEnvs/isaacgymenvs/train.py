@@ -49,6 +49,19 @@ if os.environ.get('USE_RL_GAMES_DEBUG', '0') == '1':
                           "Expected at ~/DNNE-LINUX-SUPPORT/rl_games_debug")
     sys.modules['rl_games'] = rl_games_debug
     DNNE_print("Using rl_games_debug instead of rl_games")
+elif os.environ.get('USE_RL_GAMES_DNNE', '0') == '1':
+    # Add rl_games_dnne parent directory to Python path
+    rl_games_dnne_parent = os.path.expanduser("~/DNNE-LINUX-SUPPORT")
+    if rl_games_dnne_parent not in sys.path:
+        sys.path.insert(0, rl_games_dnne_parent)
+    
+    try:
+        import rl_games_dnne as rl_games
+        sys.modules['rl_games'] = rl_games
+        DNNE_print("Using rl_games_dnne instead of rl_games")
+    except ImportError:
+        raise RuntimeError("USE_RL_GAMES_DNNE=1 but rl_games_dnne module not found. "
+                          "Expected at ~/DNNE-LINUX-SUPPORT/rl_games_dnne")
 
 import hydra
 
