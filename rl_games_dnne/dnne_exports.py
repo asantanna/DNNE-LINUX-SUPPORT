@@ -104,6 +104,7 @@ class PPOComponents:
             info_dict: Dictionary with training metrics
             total_loss: Total loss value
         """
+        # print("[DEBUG] train_actor_critic STARTED")
         obs = input_dict['obs']
         actions = input_dict['actions']
         old_values = input_dict['old_values']
@@ -120,21 +121,30 @@ class PPOComponents:
         
         # Forward pass through model
         # Get shared features
+        # print("[DEBUG] Getting shared features...")
         features = model['shared'](obs)
+        # print(f"[DEBUG] Features shape: {features.shape}")
         
         # Get value predictions
+        # print("[DEBUG] Getting value predictions...")
         values = model['value'](features).squeeze(-1)
+        # print(f"[DEBUG] Values shape: {values.shape}")
         
         # Get action distribution
+        # print(f"[DEBUG] Getting action distribution (old_mu is {'not ' if old_mu is None else ''}None)...")
         if old_mu is not None:  # Continuous actions
+            # print("[DEBUG] Continuous action path...")
             action_mean = model['policy_mean'](features)
+            # print(f"[DEBUG] Action mean shape: {action_mean.shape}")
             action_log_std = model['policy_log_std']['log_std']
             action_std = torch.exp(action_log_std)
+            # print(f"[DEBUG] Action std shape: {action_std.shape}")
             
             # Create distribution
             distr = dist.Normal(action_mean, action_std)
             action_log_probs = distr.log_prob(actions).sum(dim=-1)
             entropy = distr.entropy().sum(dim=-1).mean()
+            # print(f"[DEBUG] Action log probs shape: {action_log_probs.shape}, entropy: {entropy.item():.4f}")
             
         else:  # Discrete actions
             action_logits = model['policy_mean'](features)
@@ -198,10 +208,26 @@ class PPOComponents:
                 print(f"[DNNE_DEBUG] PPO_GRAD: KL divergence: {kl_dist.item():.6f}")
                 print(f"[DNNE_DEBUG] PPO_GRAD: Mu shape: {action_mean.shape}, mean: {action_mean.mean().item():.4f}, std: {action_mean.std().item():.4f}")
                 print(f"[DNNE_DEBUG] PPO_GRAD: Sigma shape: {action_std.shape}, mean: {action_std.mean().item():.4f}, std: {action_std.std().item():.4f}")
-                print(f"[DNNE_DEBUG] PPO_GRAD: First 5 mu values: {action_mean[0][:5].tolist()}")
-                print(f"[DNNE_DEBUG] PPO_GRAD: First 5 sigma values: {action_std[0][:5].tolist()}")
-                print(f"[DNNE_DEBUG] PPO_GRAD: First 5 old mu values: {old_mu[0][:5].tolist()}")
-                print(f"[DNNE_DEBUG] PPO_GRAD: First 5 old sigma values: {old_sigma[0][:5].tolist()}")
+                # Handle different tensor shapes for debug printing
+                if action_mean.shape[0] > 0 and len(action_mean.shape) > 1:
+                    print(f"[DNNE_DEBUG] PPO_GRAD: First 5 mu values: {action_mean[0][:5].tolist()}")
+                elif action_mean.numel() > 0:
+                    print(f"[DNNE_DEBUG] PPO_GRAD: Mu value: {action_mean.tolist()}")
+                    
+                if action_std.numel() > 5:
+                    print(f"[DNNE_DEBUG] PPO_GRAD: First 5 sigma values: {action_std[:5].tolist()}")
+                else:
+                    print(f"[DNNE_DEBUG] PPO_GRAD: Sigma values: {action_std.tolist()}")
+                    
+                if old_mu.shape[0] > 0 and len(old_mu.shape) > 1:
+                    print(f"[DNNE_DEBUG] PPO_GRAD: First 5 old mu values: {old_mu[0][:5].tolist()}")
+                elif old_mu.numel() > 0:
+                    print(f"[DNNE_DEBUG] PPO_GRAD: Old mu value: {old_mu.tolist()}")
+                    
+                if old_sigma.numel() > 5:
+                    print(f"[DNNE_DEBUG] PPO_GRAD: First 5 old sigma values: {old_sigma[:5].tolist()}")
+                else:
+                    print(f"[DNNE_DEBUG] PPO_GRAD: Old sigma values: {old_sigma.tolist()}")
         
         # Info dict for logging
         info_dict = {
@@ -214,6 +240,7 @@ class PPOComponents:
             'values_mean': values.mean().item(),
         }
         
+        # print(f"[DEBUG] train_actor_critic COMPLETED, total_loss={total_loss.item():.4f}")
         return info_dict, total_loss
 
 

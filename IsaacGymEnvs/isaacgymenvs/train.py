@@ -35,21 +35,8 @@ import sys
 # Import DNNE_print from debug_utils (doesn't import torch)
 from isaacgymenvs.utils.debug_utils import DNNE_print
 
-# Handle rl_games debug version selection BEFORE any rl_games imports
-if os.environ.get('USE_RL_GAMES_DEBUG', '0') == '1':
-    # Add rl_games_debug parent directory to Python path
-    rl_games_debug_parent = os.path.expanduser("~/DNNE-LINUX-SUPPORT")
-    if rl_games_debug_parent not in sys.path:
-        sys.path.insert(0, rl_games_debug_parent)
-    
-    try:
-        import rl_games_debug
-    except ImportError:
-        raise RuntimeError("USE_RL_GAMES_DEBUG=1 but rl_games_debug module not found. "
-                          "Expected at ~/DNNE-LINUX-SUPPORT/rl_games_debug")
-    sys.modules['rl_games'] = rl_games_debug
-    DNNE_print("Using rl_games_debug instead of rl_games")
-elif os.environ.get('USE_RL_GAMES_DNNE', '0') == '1':
+# Use rl_games_dnne by default (can be disabled with USE_STANDARD_RL_GAMES=1)
+if os.environ.get('USE_STANDARD_RL_GAMES', '0') != '1':
     # Add rl_games_dnne parent directory to Python path
     rl_games_dnne_parent = os.path.expanduser("~/DNNE-LINUX-SUPPORT")
     if rl_games_dnne_parent not in sys.path:
@@ -58,10 +45,12 @@ elif os.environ.get('USE_RL_GAMES_DNNE', '0') == '1':
     try:
         import rl_games_dnne as rl_games
         sys.modules['rl_games'] = rl_games
-        DNNE_print("Using rl_games_dnne instead of rl_games")
+        DNNE_print("Using rl_games_dnne (default)")
     except ImportError:
-        raise RuntimeError("USE_RL_GAMES_DNNE=1 but rl_games_dnne module not found. "
-                          "Expected at ~/DNNE-LINUX-SUPPORT/rl_games_dnne")
+        DNNE_print("WARNING: rl_games_dnne not found at ~/DNNE-LINUX-SUPPORT/rl_games_dnne, falling back to standard rl_games")
+        # Fall back to standard rl_games if rl_games_dnne not available
+else:
+    DNNE_print("Using standard rl_games (USE_STANDARD_RL_GAMES=1)")
 
 import hydra
 
