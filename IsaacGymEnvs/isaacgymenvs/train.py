@@ -31,6 +31,15 @@
 
 import os
 import sys
+import warnings
+
+# Suppress specific deprecation warnings
+warnings.filterwarnings("ignore", category=DeprecationWarning, module="isaacgym")
+warnings.filterwarnings("ignore", category=DeprecationWarning, module="networkx")
+warnings.filterwarnings("ignore", category=DeprecationWarning, module="pkg_resources")
+warnings.filterwarnings("ignore", message=".*np.float.*")
+warnings.filterwarnings("ignore", message=".*np.int.*")
+warnings.filterwarnings("ignore", message=".*invalid escape sequence.*")
 
 # Import DNNE_print from debug_utils (doesn't import torch)
 from isaacgymenvs.utils.debug_utils import DNNE_print
@@ -74,9 +83,11 @@ def preprocess_train_config(cfg, config_dict):
 
     train_cfg['full_experiment_name'] = cfg.get('full_experiment_name')
 
-    print(f'Using rl_device: {cfg.rl_device}')
-    print(f'Using sim_device: {cfg.sim_device}')
-    print(train_cfg)
+    # Suppress device info when PPO_CYCLE_DEBUG is active
+    if os.environ.get('PPO_CYCLE_DEBUG', '0') != '1':
+        print(f'Using rl_device: {cfg.rl_device}')
+        print(f'Using sim_device: {cfg.sim_device}')
+        print(train_cfg)
 
     try:
         model_size_multiplier = config_dict['params']['network']['mlp']['model_size_multiplier']
@@ -131,7 +142,10 @@ def launch_rlg_hydra(cfg: DictConfig):
         cfg.checkpoint = to_absolute_path(cfg.checkpoint)
 
     cfg_dict = omegaconf_to_dict(cfg)
-    print_dict(cfg_dict)
+    
+    # Suppress task configuration output when PPO_CYCLE_DEBUG is active
+    if os.environ.get('PPO_CYCLE_DEBUG', '0') != '1':
+        print_dict(cfg_dict)
 
     # set numpy formatting for printing only
     set_np_formatting()
