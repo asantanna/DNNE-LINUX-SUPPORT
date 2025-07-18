@@ -380,8 +380,9 @@ class VecTask(Env):
         
         # Record first step time BEFORE physics simulation
         import builtins
-        if getattr(builtins, 'DNNE_PROFILING', False) and builtins.DNNE_FIRST_STEP_TIME is None:
+        if getattr(builtins, 'DNNE_PROFILING', False) and getattr(builtins, 'DNNE_FIRST_STEP_TIME', None) is None:
             builtins.DNNE_FIRST_STEP_TIME = time.perf_counter()
+            from isaacgymenvs.utils.debug_utils import DNNE_print
             DNNE_print(f"First step at {builtins.DNNE_FIRST_STEP_TIME}")
 
         # Add PPO_CYCLE_DEBUG logging
@@ -456,6 +457,8 @@ class VecTask(Env):
         # Record last step time AFTER physics simulation completes
         if getattr(builtins, 'DNNE_PROFILING', False):
             builtins.DNNE_LAST_STEP_TIME = time.perf_counter()
+            if not hasattr(builtins, 'DNNE_TOTAL_ENV_STEPS'):
+                builtins.DNNE_TOTAL_ENV_STEPS = 0
             builtins.DNNE_TOTAL_ENV_STEPS += self.num_envs  # Each step processes all environments
 
         return self.obs_dict, self.rew_buf.to(self.rl_device), self.reset_buf.to(self.rl_device), self.extras
