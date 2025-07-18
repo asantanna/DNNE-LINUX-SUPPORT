@@ -30,6 +30,12 @@
 
 
 # Debug print function for consistent logging
-def DNNE_print(message):
-    """Print with [DNNE_DEBUG] prefix for easy grep filtering"""
-    print(f"[DNNE_DEBUG] {message}")
+def DNNE_print(shared, category, message):
+    """Print with [DNNE_DEBUG] shared/category format for easy grep filtering
+    
+    Args:
+        shared: "D" for DNNE only, "I" for IGE only, "B" for both (shared code)
+        category: Category string (e.g., "PPO_CYCLE", "PPO_BATCH", "ENV_INIT")
+        message: The message to print
+    """
+    print(f"[DNNE_DEBUG] {shared}/{category}: {message}")

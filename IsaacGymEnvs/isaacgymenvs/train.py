@@ -54,12 +54,12 @@ if os.environ.get('USE_STANDARD_RL_GAMES', '0') != '1':
     try:
         import rl_games_dnne as rl_games
         sys.modules['rl_games'] = rl_games
-        DNNE_print("Using rl_games_dnne (default)")
+        DNNE_print("I", "RL_GAMES", "Using rl_games_dnne (default)")
     except ImportError:
-        DNNE_print("WARNING: rl_games_dnne not found at ~/DNNE-LINUX-SUPPORT/rl_games_dnne, falling back to standard rl_games")
+        DNNE_print("I", "RL_GAMES", "WARNING: rl_games_dnne not found at ~/DNNE-LINUX-SUPPORT/rl_games_dnne, falling back to standard rl_games")
         # Fall back to standard rl_games if rl_games_dnne not available
 else:
-    DNNE_print("Using standard rl_games (USE_STANDARD_RL_GAMES=1)")
+    DNNE_print("I", "RL_GAMES", "Using standard rl_games (USE_STANDARD_RL_GAMES=1)")
 
 import hydra
 

@@ -238,7 +238,7 @@ class VecTask(Env):
             self.first_step_time = None
             self.last_step_time = None
             self.total_env_steps = 0
-            DNNE_print(f"C++ profiling enabled for {self.__class__.__name__}")
+            DNNE_print("B", "PROFILING", f"C++ profiling enabled for {self.__class__.__name__}")
 
         self.sim_params = self.__parse_sim_params(self.cfg["physics_engine"], self.cfg["sim"])
         if self.cfg["physics_engine"] == "physx":
@@ -383,7 +383,7 @@ class VecTask(Env):
         if getattr(builtins, 'DNNE_PROFILING', False) and getattr(builtins, 'DNNE_FIRST_STEP_TIME', None) is None:
             builtins.DNNE_FIRST_STEP_TIME = time.perf_counter()
             from isaacgymenvs.utils.debug_utils import DNNE_print
-            DNNE_print(f"First step at {builtins.DNNE_FIRST_STEP_TIME}")
+            DNNE_print("B", "PROFILING", f"First step at {builtins.DNNE_FIRST_STEP_TIME}")
 
         # Add PPO_CYCLE_DEBUG logging
         import os
@@ -392,8 +392,8 @@ class VecTask(Env):
                 self._step_count = 0
             self._step_count += 1
             from isaacgymenvs.utils.debug_utils import DNNE_print
-            DNNE_print(f"[PPO_CYCLE_DEBUG] VecTask.step() call #{self._step_count}")
-            DNNE_print(f"[PPO_CYCLE_DEBUG] Actions shape: {actions.shape}, device: {actions.device}")
+            DNNE_print("B", "PPO_CYCLE", f"VecTask.step() call #{self._step_count}")
+            DNNE_print("B", "PPO_CYCLE", f"Actions shape: {actions.shape}, device: {actions.device}")
 
         # randomize actions
         if self.dr_randomizations.get('actions', None):
@@ -489,9 +489,9 @@ class VecTask(Env):
         import os
         if os.environ.get('PPO_CYCLE_DEBUG', '0') == '1':
             from isaacgymenvs.utils.debug_utils import DNNE_print
-            DNNE_print(f"[PPO_CYCLE_DEBUG] VecTask.reset() called")
-            DNNE_print(f"[PPO_CYCLE_DEBUG] obs_buf shape: {self.obs_buf.shape}")
-            DNNE_print(f"[PPO_CYCLE_DEBUG] Initial obs: min={self.obs_buf.min():.4f}, max={self.obs_buf.max():.4f}, mean={self.obs_buf.mean():.4f}")
+            DNNE_print("B", "PPO_CYCLE", "VecTask.reset() called")
+            DNNE_print("B", "PPO_CYCLE", f"obs_buf shape: {self.obs_buf.shape}")
+            DNNE_print("B", "PPO_CYCLE", f"Initial obs: min={self.obs_buf.min():.4f}, max={self.obs_buf.max():.4f}, mean={self.obs_buf.mean():.4f}")
         
         self.obs_dict["obs"] = torch.clamp(self.obs_buf, -self.clip_obs, self.clip_obs).to(self.rl_device)
 
@@ -933,7 +933,7 @@ class VecTask(Env):
                 json.dump(output_data, f, indent=2)
             
             if output_data:
-                DNNE_print(f"Saved timing data: {list(output_data.keys())}")
+                DNNE_print("B", "PROFILING", f"Saved timing data: {list(output_data.keys())}")
     
     def __del__(self):
         """Save timing data on cleanup"""
