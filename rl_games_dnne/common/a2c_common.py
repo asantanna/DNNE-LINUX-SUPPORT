@@ -773,7 +773,7 @@ class A2CBase(BaseAlgorithm):
             self.experience_buffer.update_data('rewards', n, shaped_rewards)
             
             # PPO_CYCLE_DEBUG logging
-            if ppo_cycle_debug and n < 5:
+            if ppo_cycle_debug:
                 # Log initial state on very first step
                 if n == 0 and not initial_state_logged:
                     initial_state_logged = True
@@ -810,13 +810,8 @@ class A2CBase(BaseAlgorithm):
                         
                         if hasattr(network, 'sigma') and hasattr(network.sigma, 'weight'):
                             DNNE_print(f"PPO_INITIAL: Sigma vals: {network.sigma.tolist() if network.sigma.numel() <= 4 else network.sigma[:4].tolist()}")
-                    
-                    # Check if we should stop after this cycle
-                    if ppo_stop_after_cycle > 0 and cycle_count >= ppo_stop_after_cycle:
-                        DNNE_print(f"PPO_STOP: Stopping after {cycle_count} cycle(s) as requested")
-                        import sys
-                        sys.exit(0)
                 
+                # Log step info for PPO_CYCLE_DEBUG
                 action = res_dict['actions'][0, 0].item() if res_dict['actions'].numel() > 0 else 0.0
                 value = res_dict['values'][0].item() if res_dict['values'].numel() > 0 else 0.0
                 reward = rewards[0].item() if rewards.numel() > 0 else 0.0
@@ -1112,6 +1107,13 @@ class DiscreteA2CBase(A2CBase):
             epoch_num = self.update_epoch()
             step_time, play_time, update_time, sum_time, a_losses, c_losses, entropies, kls, last_lr, lr_mul = self.train_epoch()
 
+            # Check if we should stop after this PPO cycle (after full training)
+            ppo_stop_after_cycle = int(os.environ.get('PPO_STOP_AFTER_CYCLE', '0'))
+            if ppo_stop_after_cycle > 0 and epoch_num >= ppo_stop_after_cycle:
+                DNNE_print(f"PPO_STOP: Stopping after {epoch_num} full PPO cycle(s) as requested (including training)")
+                import sys
+                sys.exit(0)
+
             # cleaning memory to optimize space
             self.dataset.update_values_dict(None)
             total_time += sum_time
@@ -1388,6 +1390,13 @@ class ContinuousA2CBase(A2CBase):
             step_time, play_time, update_time, sum_time, a_losses, c_losses, b_losses, entropies, kls, last_lr, lr_mul = self.train_epoch()
             total_time += sum_time
             frame = self.frame // self.num_agents
+            
+            # Check if we should stop after this PPO cycle (after full training)
+            ppo_stop_after_cycle = int(os.environ.get('PPO_STOP_AFTER_CYCLE', '0'))
+            if ppo_stop_after_cycle > 0 and epoch_num >= ppo_stop_after_cycle:
+                DNNE_print(f"PPO_STOP: Stopping after {epoch_num} full PPO cycle(s) as requested (including training)")
+                import sys
+                sys.exit(0)
 
             # cleaning memory to optimize space
             self.dataset.update_values_dict(None)
