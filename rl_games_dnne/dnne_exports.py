@@ -9,6 +9,17 @@ import torch.distributions as dist
 import numpy as np
 from typing import Dict, Any, Tuple, Optional
 
+# Local DNNE_print for this module to avoid circular imports
+def DNNE_print(shared, category, message):
+    """Print with [DNNE_DEBUG] shared/category format for easy grep filtering
+    
+    Args:
+        shared: "D" for DNNE only, "I" for IGE only, "B" for both (shared code)
+        category: Category string (e.g., "PPO_CYCLE", "PPO_BATCH", "ENV_INIT")
+        message: The message to print
+    """
+    print(f"[DNNE_DEBUG] {shared}/{category}: {message}")
+
 
 class PPOComponents:
     """
@@ -188,15 +199,15 @@ class PPOComponents:
         # PPO_GRAD debug logging to match rl_games
         import os
         if os.environ.get('PPO_CYCLE_DEBUG', '0') == '1':
-            print(f"[DNNE_DEBUG] PPO_GRAD: Batch size: {obs.shape[0]}")
-            print(f"[DNNE_DEBUG] PPO_GRAD: Actor loss: {actor_loss.item():.6f}")
-            print(f"[DNNE_DEBUG] PPO_GRAD: Critic loss: {value_loss.item():.6f}")
-            print(f"[DNNE_DEBUG] PPO_GRAD: Entropy: {entropy.item():.6f}")
-            print(f"[DNNE_DEBUG] PPO_GRAD: Total loss: {total_loss.item():.6f}")
-            print(f"[DNNE_DEBUG] PPO_GRAD: Advantage mean: {advantages.mean().item():.4f}, std: {advantages.std().item():.4f}")
-            print(f"[DNNE_DEBUG] PPO_GRAD: First 5 advantages: {advantages[:5].tolist()}")
-            print(f"[DNNE_DEBUG] PPO_GRAD: First 5 old log probs: {old_action_log_probs[:5].tolist()}")
-            print(f"[DNNE_DEBUG] PPO_GRAD: First 5 new log probs: {action_log_probs[:5].tolist()}")
+            DNNE_print("D", "PPO_GRAD", f"Batch size: {obs.shape[0]}")
+            DNNE_print("D", "PPO_GRAD", f"Actor loss: {actor_loss.item():.6f}")
+            DNNE_print("D", "PPO_GRAD", f"Critic loss: {value_loss.item():.6f}")
+            DNNE_print("D", "PPO_GRAD", f"Entropy: {entropy.item():.6f}")
+            DNNE_print("D", "PPO_GRAD", f"Total loss: {total_loss.item():.6f}")
+            DNNE_print("D", "PPO_GRAD", f"Advantage mean: {advantages.mean().item():.4f}, std: {advantages.std().item():.4f}")
+            DNNE_print("D", "PPO_GRAD", f"First 5 advantages: {advantages[:5].tolist()}")
+            DNNE_print("D", "PPO_GRAD", f"First 5 old log probs: {old_action_log_probs[:5].tolist()}")
+            DNNE_print("D", "PPO_GRAD", f"First 5 new log probs: {action_log_probs[:5].tolist()}")
             
             if old_mu is not None:  # Additional debug for continuous actions
                 # Compute KL divergence
@@ -205,29 +216,29 @@ class PPOComponents:
                     (action_std**2 + (old_mu - action_mean)**2) / (2.0 * old_sigma**2) - 0.5,
                     dim=-1
                 ))
-                print(f"[DNNE_DEBUG] PPO_GRAD: KL divergence: {kl_dist.item():.6f}")
-                print(f"[DNNE_DEBUG] PPO_GRAD: Mu shape: {action_mean.shape}, mean: {action_mean.mean().item():.4f}, std: {action_mean.std().item():.4f}")
-                print(f"[DNNE_DEBUG] PPO_GRAD: Sigma shape: {action_std.shape}, mean: {action_std.mean().item():.4f}, std: {action_std.std().item():.4f}")
+                DNNE_print("D", "PPO_GRAD", f"KL divergence: {kl_dist.item():.6f}")
+                DNNE_print("D", "PPO_GRAD", f"Mu shape: {action_mean.shape}, mean: {action_mean.mean().item():.4f}, std: {action_mean.std().item():.4f}")
+                DNNE_print("D", "PPO_GRAD", f"Sigma shape: {action_std.shape}, mean: {action_std.mean().item():.4f}, std: {action_std.std().item():.4f}")
                 # Handle different tensor shapes for debug printing
                 if action_mean.shape[0] > 0 and len(action_mean.shape) > 1:
-                    print(f"[DNNE_DEBUG] PPO_GRAD: First 5 mu values: {action_mean[0][:5].tolist()}")
+                    DNNE_print("D", "PPO_GRAD", f"First 5 mu values: {action_mean[0][:5].tolist()}")
                 elif action_mean.numel() > 0:
-                    print(f"[DNNE_DEBUG] PPO_GRAD: Mu value: {action_mean.tolist()}")
+                    DNNE_print("D", "PPO_GRAD", f"Mu value: {action_mean.tolist()}")
                     
                 if action_std.numel() > 5:
-                    print(f"[DNNE_DEBUG] PPO_GRAD: First 5 sigma values: {action_std[:5].tolist()}")
+                    DNNE_print("D", "PPO_GRAD", f"First 5 sigma values: {action_std[:5].tolist()}")
                 else:
-                    print(f"[DNNE_DEBUG] PPO_GRAD: Sigma values: {action_std.tolist()}")
+                    DNNE_print("D", "PPO_GRAD", f"Sigma values: {action_std.tolist()}")
                     
                 if old_mu.shape[0] > 0 and len(old_mu.shape) > 1:
-                    print(f"[DNNE_DEBUG] PPO_GRAD: First 5 old mu values: {old_mu[0][:5].tolist()}")
+                    DNNE_print("D", "PPO_GRAD", f"First 5 old mu values: {old_mu[0][:5].tolist()}")
                 elif old_mu.numel() > 0:
-                    print(f"[DNNE_DEBUG] PPO_GRAD: Old mu value: {old_mu.tolist()}")
+                    DNNE_print("D", "PPO_GRAD", f"Old mu value: {old_mu.tolist()}")
                     
                 if old_sigma.numel() > 5:
-                    print(f"[DNNE_DEBUG] PPO_GRAD: First 5 old sigma values: {old_sigma[:5].tolist()}")
+                    DNNE_print("D", "PPO_GRAD", f"First 5 old sigma values: {old_sigma[:5].tolist()}")
                 else:
-                    print(f"[DNNE_DEBUG] PPO_GRAD: Old sigma values: {old_sigma.tolist()}")
+                    DNNE_print("D", "PPO_GRAD", f"Old sigma values: {old_sigma.tolist()}")
         
         # Info dict for logging
         info_dict = {

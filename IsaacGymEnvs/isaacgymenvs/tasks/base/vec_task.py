@@ -391,8 +391,9 @@ class VecTask(Env):
             if not hasattr(self, '_step_count'):
                 self._step_count = 0
             self._step_count += 1
-            from isaacgymenvs.utils.debug_utils import DNNE_print
-            DNNE_print("B", "PPO_CYCLE", f"VecTask.step() call #{self._step_count}")
+            from isaacgymenvs.utils.debug_utils import DNNE_print, debug_get_calling_function_name
+            caller = debug_get_calling_function_name(levels_up=1)
+            DNNE_print("B", "PPO_CYCLE", f"VecTask.step() call #{self._step_count} by {caller}")
             DNNE_print("B", "PPO_CYCLE", f"Actions shape: {actions.shape}, device: {actions.device}")
 
         # randomize actions
@@ -488,8 +489,9 @@ class VecTask(Env):
         # Add PPO_CYCLE_DEBUG logging
         import os
         if os.environ.get('PPO_CYCLE_DEBUG', '0') == '1':
-            from isaacgymenvs.utils.debug_utils import DNNE_print
-            DNNE_print("B", "PPO_CYCLE", "VecTask.reset() called")
+            from isaacgymenvs.utils.debug_utils import DNNE_print, debug_get_calling_function_name
+            caller = debug_get_calling_function_name(levels_up=1)
+            DNNE_print("B", "PPO_CYCLE", f"VecTask.reset() called by {caller}")
             DNNE_print("B", "PPO_CYCLE", f"obs_buf shape: {self.obs_buf.shape}")
             DNNE_print("B", "PPO_CYCLE", f"Initial obs: min={self.obs_buf.min():.4f}, max={self.obs_buf.max():.4f}, mean={self.obs_buf.mean():.4f}")
         

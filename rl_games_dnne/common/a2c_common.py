@@ -6,7 +6,18 @@ from rl_games.common import vecenv
 # Debug print function for consistent logging
 def DNNE_print(message):
     """Print with [DNNE_DEBUG] prefix for easy grep filtering"""
-    print(f"[DNNE_DEBUG] {message}")
+    # Special case for PPO cycle start messages
+    if message.startswith("=== PPO TRAINING CYCLE"):
+        print(f"[DNNE_DEBUG] I/PPO_CYCLE: {message}")
+    elif ": " in message:
+        # Extract category from message if it follows pattern "CATEGORY: message"
+        parts = message.split(": ", 1)
+        category = parts[0]
+        actual_message = parts[1]
+        print(f"[DNNE_DEBUG] I/{category}: {actual_message}")
+    else:
+        # For messages without category, just add I/ prefix
+        print(f"[DNNE_DEBUG] I/GENERAL: {message}")
 
 from rl_games.algos_torch.moving_mean_std import GeneralizedMovingStats
 from rl_games.algos_torch.self_play_manager import SelfPlayManager
@@ -781,6 +792,10 @@ class A2CBase(BaseAlgorithm):
                     DNNE_print(f"=== PPO TRAINING CYCLE {cycle_count} START ===")
                     DNNE_print(f"PPO_INITIAL: First observation: {self.obs['obs'][0][:4].tolist()}")
                     DNNE_print(f"PPO_INITIAL: Observation shape: {self.obs['obs'].shape}")
+                    
+                    # Log torch seed state hash for debugging
+                    import torch
+                    DNNE_print(f"PPO_INITIAL: Building model with torch seed state hash: {hash(torch.get_rng_state().cpu().numpy().tobytes())}")
                     
                     # Log observation normalization parameters if available
                     if hasattr(self.model, 'running_mean_std'):

@@ -28,6 +28,8 @@
 
 """Debug utilities that don't depend on torch or other heavy imports"""
 
+import inspect
+
 
 # Debug print function for consistent logging
 def DNNE_print(shared, category, message):
@@ -39,3 +41,51 @@ def DNNE_print(shared, category, message):
         message: The message to print
     """
     print(f"[DNNE_DEBUG] {shared}/{category}: {message}")
+
+
+def debug_get_calling_function_name(levels_up=2):
+    """Get the name of the calling function for debug purposes
+    
+    Args:
+        levels_up: How many levels up the call stack to look (default 2)
+                  1 = immediate caller of this function
+                  2 = caller of the function that called this (default)
+                  
+    Returns:
+        String with format "module.Class.method" or "module.function"
+    """
+    try:
+        frame = inspect.currentframe()
+        # Go up the specified number of levels
+        for _ in range(levels_up):
+            if frame is not None:
+                frame = frame.f_back
+            else:
+                return "unknown"
+        
+        if frame is None:
+            return "unknown"
+            
+        # Get the function/method name
+        func_name = frame.f_code.co_name
+        
+        # Try to get the class name if it's a method
+        if 'self' in frame.f_locals:
+            class_name = frame.f_locals['self'].__class__.__name__
+            module_name = frame.f_locals['self'].__class__.__module__
+            # Get just the last part of the module name
+            module_short = module_name.split('.')[-1] if module_name else ""
+            return f"{module_short}.{class_name}.{func_name}"
+        else:
+            # It's a function, not a method
+            module_name = frame.f_globals.get('__name__', '')
+            module_short = module_name.split('.')[-1] if module_name else ""
+            return f"{module_short}.{func_name}"
+            
+    except Exception as e:
+        # Don't let debug code crash the program
+        return f"error: {str(e)}"
+    finally:
+        # Clean up frame reference to avoid memory leaks
+        if 'frame' in locals():
+            del frame
