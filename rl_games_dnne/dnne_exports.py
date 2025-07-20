@@ -131,37 +131,49 @@ class PPOComponents:
         advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
         
         # Forward pass through model
-        # Get shared features
-        # print("[DEBUG] Getting shared features...")
-        features = model['shared'](obs)
-        # print(f"[DEBUG] Features shape: {features.shape}")
-        
-        # Get value predictions
-        # print("[DEBUG] Getting value predictions...")
-        values = model['value'](features).squeeze(-1)
-        # print(f"[DEBUG] Values shape: {values.shape}")
-        
-        # Get action distribution
-        # print(f"[DEBUG] Getting action distribution (old_mu is {'not ' if old_mu is None else ''}None)...")
-        if old_mu is not None:  # Continuous actions
-            # print("[DEBUG] Continuous action path...")
-            action_mean = model['policy_mean'](features)
-            # print(f"[DEBUG] Action mean shape: {action_mean.shape}")
-            action_log_std = model['policy_log_std']['log_std']
-            action_std = torch.exp(action_log_std)
-            # print(f"[DEBUG] Action std shape: {action_std.shape}")
+        # Check if this is an A2CBuilder model (has forward method that takes dict)
+        if hasattr(model, 'forward') and hasattr(model, 'a2c_network'):
+            # A2CBuilder model interface
+            input_dict = {
+                'obs': obs,
+                'is_train': True,
+                'prev_actions': actions
+            }
+            result = model(input_dict)
             
-            # Create distribution
-            distr = dist.Normal(action_mean, action_std)
-            action_log_probs = distr.log_prob(actions).sum(dim=-1)
-            entropy = distr.entropy().sum(dim=-1).mean()
-            # print(f"[DEBUG] Action log probs shape: {action_log_probs.shape}, entropy: {entropy.item():.4f}")
+            # Extract values from result
+            values = result['values'].squeeze(-1)
+            action_log_probs = -result['prev_neglogp']  # neglogp is negative log prob
+            entropy = result['entropy'].mean()
             
-        else:  # Discrete actions
-            action_logits = model['policy_mean'](features)
-            distr = dist.Categorical(logits=action_logits)
-            action_log_probs = distr.log_prob(actions.squeeze(-1))
-            entropy = distr.entropy().mean()
+            # Get mu and sigma for KL divergence computation
+            action_mean = result['mus']
+            action_std = result['sigmas']
+            
+        else:
+            # Old model structure (dict-based)
+            # Get shared features
+            features = model['shared'](obs)
+            
+            # Get value predictions
+            values = model['value'](features).squeeze(-1)
+            
+            # Get action distribution
+            if old_mu is not None:  # Continuous actions
+                action_mean = model['policy_mean'](features)
+                action_log_std = model['policy_log_std']['log_std']
+                action_std = torch.exp(action_log_std)
+                
+                # Create distribution
+                distr = dist.Normal(action_mean, action_std)
+                action_log_probs = distr.log_prob(actions).sum(dim=-1)
+                entropy = distr.entropy().sum(dim=-1).mean()
+                
+            else:  # Discrete actions
+                action_logits = model['policy_mean'](features)
+                distr = dist.Categorical(logits=action_logits)
+                action_log_probs = distr.log_prob(actions.squeeze(-1))
+                entropy = distr.entropy().mean()
         
         # PPO loss
         ratio = torch.exp(action_log_probs - old_action_log_probs)
