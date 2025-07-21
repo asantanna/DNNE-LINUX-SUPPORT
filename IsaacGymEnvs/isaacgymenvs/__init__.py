@@ -22,7 +22,8 @@ def make(
     multi_gpu: bool = False,
     virtual_screen_capture: bool = False,
     force_render: bool = True,
-    cfg: DictConfig = None
+    cfg: DictConfig = None,
+    dnne_cfg: dict = None
 ): 
     from isaacgymenvs.utils.rlgames_utils import get_rlgames_env_creator
     # create hydra config if no config passed in
@@ -40,9 +41,17 @@ def make(
     else:
         cfg_dict = omegaconf_to_dict(cfg.task)
     
-    # Pass dnne_cpp_profiling from root config to task config
-    if cfg is not None and hasattr(cfg, 'dnne_cpp_profiling'):
-        cfg_dict['dnne_cpp_profiling'] = cfg.dnne_cpp_profiling
+    # Apply dnne_cfg overrides if provided
+    if dnne_cfg is not None:
+        # Pass dnne_cpp_profiling if specified
+        if 'dnne_cpp_profiling' in dnne_cfg:
+            cfg_dict['dnne_cpp_profiling'] = dnne_cfg['dnne_cpp_profiling']
+        
+        # Override physics dt if specified
+        if 'physics_dt' in dnne_cfg:
+            cfg_dict['sim']['dt'] = dnne_cfg['physics_dt']
+        
+        # Users can add other overrides to dnne_cfg as needed
 
     create_rlgpu_env = get_rlgames_env_creator(
         seed=seed,
