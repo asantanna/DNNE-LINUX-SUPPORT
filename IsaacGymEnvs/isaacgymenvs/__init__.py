@@ -43,10 +43,6 @@ def make(
     
     # Apply dnne_cfg overrides if provided
     if dnne_cfg is not None:
-        # Pass dnne_cpp_profiling if specified
-        if 'dnne_cpp_profiling' in dnne_cfg:
-            cfg_dict['dnne_cpp_profiling'] = dnne_cfg['dnne_cpp_profiling']
-        
         # Override physics dt if specified
         if 'physics_dt' in dnne_cfg:
             cfg_dict['sim']['dt'] = dnne_cfg['physics_dt']
