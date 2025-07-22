@@ -47,6 +47,19 @@ def make(
         if 'physics_dt' in dnne_cfg:
             cfg_dict['sim']['dt'] = dnne_cfg['physics_dt']
         
+        # Override sim configuration if specified
+        if 'sim' in dnne_cfg:
+            # Deep merge sim configuration
+            for key, value in dnne_cfg['sim'].items():
+                if isinstance(value, dict) and key in cfg_dict['sim']:
+                    # Merge nested dictionaries (like physx)
+                    if isinstance(cfg_dict['sim'][key], dict):
+                        cfg_dict['sim'][key].update(value)
+                    else:
+                        cfg_dict['sim'][key] = value
+                else:
+                    cfg_dict['sim'][key] = value
+        
         # Users can add other overrides to dnne_cfg as needed
 
     create_rlgpu_env = get_rlgames_env_creator(
