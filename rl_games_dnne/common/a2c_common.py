@@ -1,7 +1,23 @@
 import copy
 import os
+import sys
 
 from rl_games.common import vecenv
+
+# DNNE adaptive yielding support
+DNNE_ADAPTIVE_YIELD = os.environ.get('DNNE_ADAPTIVE_YIELD', '0') == '1'
+if DNNE_ADAPTIVE_YIELD:
+        # print(f"[DNNE_DEBUG] I/RL_GAMES: DNNE_ADAPTIVE_YIELD=1, current dir: {os.getcwd()}")
+        # print(f"[DNNE_DEBUG] I/RL_GAMES: sys.path: {sys.path[:5]}...")  # First 5 entries
+    try:
+        # Import from the exported framework location
+        from framework.globals import Global
+        # print("[DNNE_DEBUG] I/RL_GAMES: Adaptive yielding enabled - imported Global from framework")
+    except ImportError as e:
+        raise RuntimeError(
+            f"DNNE_ADAPTIVE_YIELD=1 but cannot import framework.globals: {e}\n"
+            "Make sure you're running from a DNNE exported workflow directory"
+        )
 
 # Debug print function for consistent logging
 def DNNE_print(message):
@@ -746,6 +762,10 @@ class A2CBase(BaseAlgorithm):
         return obs_batch
 
     def play_steps(self):
+        # Add timing right at the start
+        import time as time_module
+        play_steps_start_time = time_module.time()
+        
         update_list = self.update_list
 
         step_time = 0.0
@@ -756,32 +776,84 @@ class A2CBase(BaseAlgorithm):
         ppo_stop_after_cycle = int(os.environ.get('PPO_STOP_AFTER_CYCLE', '0'))
         initial_state_logged = False
         cycle_count = 0
+        
+        # DNNE DEBUG - track play_steps calls
+        # if not hasattr(self, '_dnne_play_steps_count'):
+        #     self._dnne_play_steps_count = 0
+        # self._dnne_play_steps_count += 1
+        
+        # Create debug_print function if not in train_epoch
+        # if not hasattr(self, '_last_debug_time'):
+        #     self._last_debug_time = time_module.time()
+        # 
+        # def debug_print_ps(msg):
+        #     current_time = time_module.time()
+        #     delta = current_time - self._last_debug_time
+        #     self._last_debug_time = current_time
+        #     print(f"[DNNE_DEBUG +{delta:.3f}s] {msg}", flush=True)
+        
+        # Always print
+        # debug_print_ps(f"🎮 play_steps() call #{self._dnne_play_steps_count} - horizon_length: {self.horizon_length}, epoch: {self.epoch_num}")
+        
+        # print(f"[FREEZE_DEBUG 1] About to enter horizon loop, range(0, {self.horizon_length})", flush=True)
 
         for n in range(self.horizon_length):
+            # print(f"[FREEZE_DEBUG 2] Starting loop iteration n={n}", flush=True)
+            
             if self.use_action_masks:
+            # print(f"[FREEZE_DEBUG 3] Getting action masks", flush=True)
                 masks = self.vec_env.get_action_masks()
+            # print(f"[FREEZE_DEBUG 4] Got masks, calling get_masked_action_values", flush=True)
                 res_dict = self.get_masked_action_values(self.obs, masks)
             else:
+            # print(f"[FREEZE_DEBUG 3] No action masks, calling get_action_values", flush=True)
                 res_dict = self.get_action_values(self.obs)
+            # print(f"[FREEZE_DEBUG 4] Got action values, res_dict keys: {list(res_dict.keys())}", flush=True)
+            # print(f"[FREEZE_DEBUG 5] Updating experience buffer with observations", flush=True)
             self.experience_buffer.update_data('obses', n, self.obs['obs'])
             self.experience_buffer.update_data('dones', n, self.dones)
 
+            # print(f"[FREEZE_DEBUG 6] Updating experience buffer with res_dict keys: {update_list}", flush=True)
             for k in update_list:
                 self.experience_buffer.update_data(k, n, res_dict[k]) 
             if self.has_central_value:
                 self.experience_buffer.update_data('states', n, self.obs['states'])
 
             step_time_start = time.time()
+            # DNNE DEBUG - measure env step time
+            # env_step_start = time.time()
+            # print(f"[FREEZE_DEBUG 7] About to call env_step with actions shape: {res_dict['actions'].shape}", flush=True)
+            # print(f"[FREEZE_DEBUG 7.1] self.vec_env type: {type(self.vec_env)}", flush=True)
+            # print(f"[FREEZE_DEBUG 7.2] About to call self.vec_env.step", flush=True)
             self.obs, rewards, self.dones, infos = self.env_step(res_dict['actions'])
+            # print(f"[FREEZE_DEBUG 8] env_step completed", flush=True)
+            # print(f"[FREEZE_DEBUG 8.1] obs shape: {self.obs['obs'].shape if 'obs' in self.obs else 'No obs key'}", flush=True)
+            # print(f"[FREEZE_DEBUG 8.2] rewards shape: {rewards.shape}", flush=True)
+            # print(f"[FREEZE_DEBUG 8.3] dones shape: {self.dones.shape}", flush=True)
+            # print(f"[FREEZE_DEBUG 8.4] infos keys: {list(infos.keys()) if infos else 'None'}", flush=True)
+            # env_step_duration = time.time() - env_step_start
+            # print(f"[FREEZE_DEBUG 8.5] env_step took {env_step_duration:.3f}s", flush=True)
+            
+            
             step_time_end = time.time()
 
             step_time += (step_time_end - step_time_start)
 
+            # print(f"[FREEZE_DEBUG 9] About to call rewards_shaper", flush=True)
             shaped_rewards = self.rewards_shaper(rewards)
+            # print(f"[FREEZE_DEBUG 10] rewards_shaper completed, shaped_rewards shape: {shaped_rewards.shape}", flush=True)
             if self.value_bootstrap and 'time_outs' in infos:
                 shaped_rewards += self.gamma * res_dict['values'] * self.cast_obs(infos['time_outs']).unsqueeze(1).float()
 
+            # print(f"[FREEZE_DEBUG 11] About to update experience buffer with rewards", flush=True)
             self.experience_buffer.update_data('rewards', n, shaped_rewards)
+            # print(f"[FREEZE_DEBUG 12] Experience buffer updated, DNNE_ADAPTIVE_YIELD={DNNE_ADAPTIVE_YIELD}", flush=True)
+            
+            # DNNE adaptive yield after each environment step
+            if DNNE_ADAPTIVE_YIELD:
+            # print(f"[FREEZE_DEBUG 13] About to call Global.sync_adaptive_yield()", flush=True)
+                Global.sync_adaptive_yield()
+            # print(f"[FREEZE_DEBUG 14] Global.sync_adaptive_yield() completed", flush=True)
             
             # PPO_CYCLE_DEBUG logging
             if ppo_cycle_debug:
@@ -832,30 +904,39 @@ class A2CBase(BaseAlgorithm):
                 reward = rewards[0].item() if rewards.numel() > 0 else 0.0
                 DNNE_print(f"PPO_CYCLE: Step {n + 1}: action={action:.4f}, value={value:.4f}, reward={reward:.4f}")
 
+            # print(f"[FREEZE_DEBUG 15] About to update current rewards/lengths", flush=True)
             self.current_rewards += rewards
             self.current_shaped_rewards += shaped_rewards
             self.current_lengths += 1
+            # print(f"[FREEZE_DEBUG 16] About to check done indices", flush=True)
             all_done_indices = self.dones.nonzero(as_tuple=False)
             env_done_indices = all_done_indices[::self.num_agents]
      
             self.game_rewards.update(self.current_rewards[env_done_indices])
             self.game_shaped_rewards.update(self.current_shaped_rewards[env_done_indices])
             self.game_lengths.update(self.current_lengths[env_done_indices])
+            # print(f"[FREEZE_DEBUG 17] About to process infos", flush=True)
             self.algo_observer.process_infos(infos, env_done_indices)
+            # print(f"[FREEZE_DEBUG 18] Processed infos, about to calculate not_dones", flush=True)
 
             not_dones = 1.0 - self.dones.float()
 
             self.current_rewards = self.current_rewards * not_dones.unsqueeze(1)
             self.current_shaped_rewards = self.current_shaped_rewards * not_dones.unsqueeze(1)
             self.current_lengths = self.current_lengths * not_dones
+            
+            # print(f"[FREEZE_DEBUG 19] End of loop iteration n={n}", flush=True)
 
+            # print(f"[FREEZE_DEBUG 20] Exited horizon loop, about to get last_values", flush=True)
         last_values = self.get_values(self.obs)
+            # print(f"[FREEZE_DEBUG 21] Got last_values", flush=True)
 
         fdones = self.dones.float()
         mb_fdones = self.experience_buffer.tensor_dict['dones'].float()
         mb_values = self.experience_buffer.tensor_dict['values']
         mb_rewards = self.experience_buffer.tensor_dict['rewards']
         mb_advs = self.discount_values(fdones, last_values, mb_fdones, mb_values, mb_rewards)
+        
         mb_returns = mb_advs + mb_values
 
         batch_dict = self.experience_buffer.get_transformed_list(swap_and_flatten01, self.tensor_list)
@@ -871,6 +952,7 @@ class A2CBase(BaseAlgorithm):
             DNNE_print(f"PPO_BATCH: First 5 advantages: {mb_advs.flatten()[:5].tolist()}")
             DNNE_print(f"PPO_BATCH: First 5 returns: {mb_returns.flatten()[:5].tolist()}")
 
+        # debug_print_ps(f"🎯 play_steps() #{self._dnne_play_steps_count} returning")
         return batch_dict
 
     def play_steps_rnn(self):
@@ -902,7 +984,12 @@ class A2CBase(BaseAlgorithm):
                 self.experience_buffer.update_data('states', n, self.obs['states'])
 
             step_time_start = time.time()
+            # DNNE DEBUG - measure env step time
+            # env_step_start = time.time()
             self.obs, rewards, self.dones, infos = self.env_step(res_dict['actions'])
+            # env_step_duration = time.time() - env_step_start
+            
+            
             step_time_end = time.time()
 
             step_time += (step_time_end - step_time_start)
@@ -988,17 +1075,41 @@ class DiscreteA2CBase(A2CBase):
         self.tensor_list = self.update_list + ['obses', 'states', 'dones']
 
     def train_epoch(self):
+        # print(f"[DNNE_DEBUG] 🎪 Entered train_epoch() method", flush=True)
         super().train_epoch()
+        # print(f"[DNNE_DEBUG] 🎪 super().train_epoch() completed", flush=True)
 
         self.set_eval()
+        # print(f"[DNNE_DEBUG] 🎪 set_eval() completed", flush=True)
         play_time_start = time.time()
 
+        # print(f"[DNNE_DEBUG] 🎭 Entering torch.no_grad() context", flush=True)
+        import torch
+        # print(f"[DNNE_DEBUG] 🎭 torch imported, creating context...", flush=True)
         with torch.no_grad():
+        # print(f"[DNNE_DEBUG] 🎪 Inside torch.no_grad() context", flush=True)
             if self.is_rnn:
                 batch_dict = self.play_steps_rnn()
             else:
-                batch_dict = self.play_steps()
+        # print(f"[DNNE_DEBUG] 🎬 About to call play_steps() in train_epoch", flush=True)
+                try:
+        # print(f"[DNNE_DEBUG] 🎬 Calling play_steps...", flush=True)
+                    import sys
+                    sys.stdout.flush()
+        # print(f"[DNNE_DEBUG] 🎬 Right before assignment", flush=True)
+                    batch_dict = self.play_steps()
+        # print(f"[DNNE_DEBUG] 🔙 Assignment complete!", flush=True)
+                    sys.stdout.flush()
+        # print(f"[DNNE_DEBUG] 🔙 Back from play_steps() - assignment complete", flush=True)
+                except Exception as e:
+        # print(f"[DNNE_DEBUG] ❌ Exception in play_steps: {e}", flush=True)
+                    raise
+        # print(f"[DNNE_DEBUG] ✅ play_steps() completed, got batch_dict", flush=True)
+        # print(f"[DNNE_DEBUG] 📊 batch_dict type: {type(batch_dict)}", flush=True)
+        # print(f"[DNNE_DEBUG] 🎭 About to exit torch.no_grad() context", flush=True)
+        # print(f"[DNNE_DEBUG] 🎭 Exited torch.no_grad() context - this is outside the with block", flush=True)
 
+        # print(f"[DNNE_DEBUG] 🔄 About to call set_train()", flush=True)
         self.set_train()
 
         play_time_end = time.time()
@@ -1006,7 +1117,12 @@ class DiscreteA2CBase(A2CBase):
         rnn_masks = batch_dict.get('rnn_masks', None)
 
         self.curr_frames = batch_dict.pop('played_frames')
+        
+        # print(f"[DNNE_DEBUG] 📊 About to call prepare_dataset()", flush=True)
+        prepare_start = time.time()
         self.prepare_dataset(batch_dict)
+        prepare_duration = time.time() - prepare_start
+        # print(f"[DNNE_DEBUG] ✅ prepare_dataset() completed in {prepare_duration:.3f}s", flush=True)
         self.algo_observer.after_steps()
 
         a_losses = []
@@ -1016,7 +1132,14 @@ class DiscreteA2CBase(A2CBase):
         if self.has_central_value:
             self.train_central_value()
 
+        # print(f"[DNNE_DEBUG] 🏋️ Starting training updates (mini_epochs: {self.mini_epochs_num}, dataset_size: {len(self.dataset)})", flush=True)
+        
+        # Track if this is where the pause happens
+        # training_start = time.time()
+
         for mini_ep in range(0, self.mini_epochs_num):
+            # print(f"[FREEZE_DEBUG] MINI-EPOCH {mini_ep}/{self.mini_epochs_num} STARTING", flush=True)
+            # print(f"[DNNE_DEBUG] 🔸 Starting mini-epoch {mini_ep}/{self.mini_epochs_num}", flush=True)
             ep_kls = []
             for i in range(len(self.dataset)):
                 a_loss, c_loss, entropy, kl, last_lr, lr_mul = self.train_actor_critic(self.dataset[i])
@@ -1024,6 +1147,10 @@ class DiscreteA2CBase(A2CBase):
                 c_losses.append(c_loss)
                 ep_kls.append(kl)
                 entropies.append(entropy)
+                
+                # DNNE adaptive yield after each batch
+                if DNNE_ADAPTIVE_YIELD:
+                    Global.sync_adaptive_yield()
 
             av_kls = torch_ext.mean_list(ep_kls)
             if self.multi_gpu:
@@ -1033,14 +1160,22 @@ class DiscreteA2CBase(A2CBase):
             self.last_lr, self.entropy_coef = self.scheduler.update(self.last_lr, self.entropy_coef, self.epoch_num, 0, av_kls.item())
             self.update_lr(self.last_lr)
             kls.append(av_kls)
+            debug_print(f"🔸 About to call diagnostics.mini_epoch for mini_ep={mini_ep}")
             self.diagnostics.mini_epoch(self, mini_ep)
+            debug_print(f"🔸 Completed diagnostics.mini_epoch")
             if self.normalize_input:
                 self.model.running_mean_std.eval() # don't need to update statstics more than one miniepoch
+            
+            # DNNE adaptive yield after each mini-epoch
+            if DNNE_ADAPTIVE_YIELD:
+                Global.sync_adaptive_yield()
 
         update_time_end = time.time()
         play_time = play_time_end - play_time_start
         update_time = update_time_end - update_time_start
         total_time = update_time_end - play_time_start
+        
+        # print(f"[DNNE_DEBUG] 🏁 train_epoch() completed - total_time: {total_time:.3f}s", flush=True)
 
         return batch_dict['step_time'], play_time, update_time, total_time, a_losses, c_losses, entropies, kls, last_lr, lr_mul
 
@@ -1118,9 +1253,57 @@ class DiscreteA2CBase(A2CBase):
             dist.broadcast_object_list(model_params, 0)
             self.model.load_state_dict(model_params[0])
 
+        # DNNE DEBUG - print once at start of training loop
+        # print("[DNNE_DEBUG] 🚀 Main training loop starting!", flush=True)
+        # print(f"[DNNE_DEBUG] 🔢 Initial values - epoch: {self.epoch_num}, frame: {self.frame}", flush=True)
+        
+        
+        # DNNE DEBUG - track time for periodic heartbeat and pause detection
+        # last_heartbeat = time.time()
+        # last_epoch_time = time.time()
+        # pause_count = 0
+        
+        # DNNE DEBUG - add timestamp to all debug messages
+        # def debug_with_time(msg):
+        #     print(f"[DNNE_DEBUG @ {time.time():.3f}] {msg}", flush=True)
+        
         while True:
+            # print(f"[DNNE_DEBUG] 🔁 Top of training loop", flush=True)
             epoch_num = self.update_epoch()
+            # print(f"[DNNE_DEBUG] 📝 update_epoch() returned: {epoch_num}", flush=True)
+            
+            # DNNE DEBUG - check for pauses and print heartbeat
+            current_time = time.time()
+            # epoch_interval = current_time - last_epoch_time
+            # 
+            # # Detect pause (if more than 1 second between epochs)
+            # if epoch_interval > 1.0:
+            #     pause_count += 1
+            #     print(f"[DNNE_DEBUG] ⚠️  PAUSE DETECTED #{pause_count}: {epoch_interval:.3f}s gap before epoch {epoch_num}", flush=True)
+            
+            # last_epoch_time = current_time
+            
+            # Print periodic heartbeat every second
+            # if current_time - last_heartbeat >= 1.0:
+            #     # print(f"[DNNE_DEBUG] 💓 Heartbeat at epoch {epoch_num}, time: {current_time:.3f}", flush=True)
+            #     last_heartbeat = current_time
+            
+            # DNNE DEBUG - always print epoch start
+            # print(f"[DNNE_DEBUG] 📊 Starting epoch {epoch_num}", flush=True)
+            
+            # DNNE DEBUG - measure train_epoch time
+            # print(f"[DNNE_DEBUG] 🎯 About to call self.train_epoch()", flush=True)
+            # train_epoch_start = time.time()
             step_time, play_time, update_time, sum_time, a_losses, c_losses, entropies, kls, last_lr, lr_mul = self.train_epoch()
+            # train_epoch_duration = time.time() - train_epoch_start
+            # print(f"[DNNE_DEBUG] 🎯 self.train_epoch() returned", flush=True)
+            
+            # DNNE DEBUG - always print timing info
+            # print(f"[DNNE_DEBUG] ⏱️  Epoch {epoch_num} timing - train_epoch: {train_epoch_duration:.3f}s (step: {step_time:.3f}s, play: {play_time:.3f}s, update: {update_time:.3f}s)", flush=True)
+            
+            # DNNE adaptive yield after each epoch
+            if DNNE_ADAPTIVE_YIELD:
+                Global.sync_adaptive_yield()
 
             # Check if we should stop after this PPO cycle (after full training)
             ppo_stop_after_cycle = int(os.environ.get('PPO_STOP_AFTER_CYCLE', '0'))
@@ -1143,8 +1326,8 @@ class DiscreteA2CBase(A2CBase):
 
                 frame = self.frame // self.num_agents
 
-                print_statistics(self.print_stats, curr_frames, step_time, scaled_play_time, scaled_time, 
-                                epoch_num, self.max_epochs, frame, self.max_frames)
+                # print_statistics(self.print_stats, curr_frames, step_time, scaled_play_time, scaled_time, 
+                #                 epoch_num, self.max_epochs, frame, self.max_frames)
 
                 self.write_stats(total_time, epoch_num, step_time, play_time, update_time,
                                 a_losses, c_losses, entropies, kls, last_lr, lr_mul, frame, 
@@ -1258,24 +1441,54 @@ class ContinuousA2CBase(A2CBase):
         self.tensor_list = self.update_list + ['obses', 'states', 'dones']
 
     def train_epoch(self):
+        import time
+        
+        # Debug print with time delta
+        if not hasattr(self, '_last_debug_time'):
+            self._last_debug_time = time.time()
+        
+        def debug_print(msg):
+            current_time = time.time()
+            delta = current_time - self._last_debug_time
+            self._last_debug_time = current_time
+            print(f"[DNNE_DEBUG +{delta:.3f}s] {msg}", flush=True)
+        
+        debug_print("🎪 Entered CORRECT train_epoch() method")
         super().train_epoch()
+        debug_print("🎪 super().train_epoch() completed")
 
         self.set_eval()
+        debug_print("🎪 set_eval() completed")
         play_time_start = time.time()
+        
+        # print(f"[DNNE_DEBUG] 🎭 About to enter torch.no_grad() context", flush=True)
         with torch.no_grad():
+        # print(f"[DNNE_DEBUG] 🎪 Inside torch.no_grad() context", flush=True)
             if self.is_rnn:
                 batch_dict = self.play_steps_rnn()
             else:
+        # print(f"[DNNE_DEBUG] 🎬 About to call play_steps()", flush=True)
                 batch_dict = self.play_steps()
+        # print(f"[DNNE_DEBUG] 🔙 Back from play_steps() - got batch_dict", flush=True)
+        # print(f"[DNNE_DEBUG] 🎭 Exited torch.no_grad() context", flush=True)
 
         play_time_end = time.time()
+        # print(f"[DNNE_DEBUG] ⏱️  play_time_end recorded", flush=True)
         update_time_start = time.time()
         rnn_masks = batch_dict.get('rnn_masks', None)
 
+        # print(f"[DNNE_DEBUG] 🔄 About to call set_train()", flush=True)
         self.set_train()
+        # print(f"[DNNE_DEBUG] ✅ set_train() completed", flush=True)
+        
         self.curr_frames = batch_dict.pop('played_frames')
+        # print(f"[DNNE_DEBUG] 📊 About to call prepare_dataset()", flush=True)
         self.prepare_dataset(batch_dict)
+        # print(f"[DNNE_DEBUG] ✅ prepare_dataset() completed", flush=True)
+        
+        # print(f"[DNNE_DEBUG] 📊 About to call algo_observer.after_steps()", flush=True)
         self.algo_observer.after_steps()
+        # print(f"[DNNE_DEBUG] ✅ algo_observer.after_steps() completed", flush=True)
         if self.has_central_value:
             self.train_central_value()
 
@@ -1285,16 +1498,51 @@ class ContinuousA2CBase(A2CBase):
         entropies = []
         kls = []
 
+        debug_print(f"🏋️ Starting training updates (mini_epochs: {self.mini_epochs_num})")
+        debug_print(f"🏋️ About to check dataset type and length")
+        debug_print(f"🏋️ Dataset type: {type(self.dataset)}")
+        dataset_len = len(self.dataset)
+        debug_print(f"🏋️ Dataset length: {dataset_len}")
+
+        debug_print("🏋️ About to start for loop")
         for mini_ep in range(0, self.mini_epochs_num):
+            # print(f"[FREEZE_DEBUG] MINI-EPOCH {mini_ep}/{self.mini_epochs_num} STARTING", flush=True)
+            if mini_ep > 0:
+                debug_print(f"🔸 At top of loop, about to start mini-epoch {mini_ep}")
+            mini_ep_start = time.time()
+            debug_print(f"🔸 Starting mini-epoch {mini_ep}/{self.mini_epochs_num}")
             ep_kls = []
+            batch_times = []
             for i in range(len(self.dataset)):
+                if i == 0:
+                    debug_print(f"🔹 Starting first batch of mini-epoch {mini_ep}")
+                    debug_print("🔹 About to call train_actor_critic with batch data")
+                elif i == 64:
+                    debug_print(f"🔹 Halfway through batches (batch {i})")
+                batch_start = time.time()
                 a_loss, c_loss, entropy, kl, last_lr, lr_mul, cmu, csigma, b_loss = self.train_actor_critic(self.dataset[i])
+                batch_duration = time.time() - batch_start
+                batch_times.append(batch_duration)
+                if i == 0:
+                    debug_print(f"🔹 Completed first train_actor_critic call in {batch_duration:.3f}s")
+                elif i == 64:
+                    mid_total = sum(batch_times)
+                    debug_print(f"🔹 Halfway point: processed 65 batches in {mid_total:.3f}s")
+                elif i == len(self.dataset) - 1:
+                    debug_print(f"🔹 Completed last batch ({i}) in {batch_duration:.3f}s")
+                    avg_batch_time = sum(batch_times) / len(batch_times)
+                    total_batch_time = sum(batch_times)
+                    debug_print(f"🔹 Batch stats: avg={avg_batch_time*1000:.1f}ms, total={total_batch_time:.3f}s, count={len(batch_times)}")
                 a_losses.append(a_loss)
                 c_losses.append(c_loss)
                 ep_kls.append(kl)
                 entropies.append(entropy)
-                if self.bounds_loss_coef is not None:
-                    b_losses.append(b_loss)
+            
+            # Debug: print when all batches in mini-epoch are done
+            debug_print(f"🔸 Completed all {len(self.dataset)} batches in mini-epoch {mini_ep}")
+            
+            if self.bounds_loss_coef is not None:
+                b_losses.append(b_loss)
 
                 self.dataset.update_mu_sigma(cmu, csigma)
                 if self.schedule_type == 'legacy':
@@ -1314,10 +1562,19 @@ class ContinuousA2CBase(A2CBase):
                 self.update_lr(self.last_lr)
 
             kls.append(av_kls)
+            debug_print(f"🔸 About to call diagnostics.mini_epoch for mini_ep={mini_ep}")
             self.diagnostics.mini_epoch(self, mini_ep)
+            debug_print(f"🔸 Completed diagnostics.mini_epoch")
             if self.normalize_input:
                 self.model.running_mean_std.eval() # don't need to update statstics more than one miniepoch
+            
+            # DNNE adaptive yield after each mini-epoch
+            if DNNE_ADAPTIVE_YIELD:
+                Global.sync_adaptive_yield()
+            
+            debug_print(f"🔸 End of mini-epoch {mini_ep} loop iteration")
 
+        debug_print("🏋️ Exited mini-epoch for loop")
         update_time_end = time.time()
         play_time = play_time_end - play_time_start
         update_time = update_time_end - update_time_start
@@ -1425,8 +1682,8 @@ class ContinuousA2CBase(A2CBase):
                 curr_frames = self.curr_frames * self.world_size if self.multi_gpu else self.curr_frames
                 self.frame += curr_frames
 
-                print_statistics(self.print_stats, curr_frames, step_time, scaled_play_time, scaled_time, 
-                                epoch_num, self.max_epochs, frame, self.max_frames)
+                # print_statistics(self.print_stats, curr_frames, step_time, scaled_play_time, scaled_time, 
+                #                 epoch_num, self.max_epochs, frame, self.max_frames)
 
                 self.write_stats(total_time, epoch_num, step_time, play_time, update_time,
                                 a_losses, c_losses, entropies, kls, last_lr, lr_mul, frame,
