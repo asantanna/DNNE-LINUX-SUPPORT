@@ -1,11 +1,11 @@
-from rl_games.common import a2c_common
+from rl_games_dnne.common import a2c_common
 # Import DNNE_print for PPO cycle debugging
-from rl_games.common.a2c_common import DNNE_print
-from rl_games.algos_torch import torch_ext
+from rl_games_dnne.common.a2c_common import DNNE_print
+from rl_games_dnne.algos_torch import torch_ext
 
-from rl_games.algos_torch import central_value
-from rl_games.common import common_losses
-from rl_games.common import datasets
+from rl_games_dnne.algos_torch import central_value
+from rl_games_dnne.common import common_losses
+from rl_games_dnne.common import datasets
 
 from torch import optim
 import torch 

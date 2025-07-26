@@ -1,4 +1,4 @@
-from rl_games.common.ivecenv import IVecEnv
+from rl_games_dnne.common.ivecenv import IVecEnv
 import gym
 import numpy as np
 import torch.utils.dlpack as tpack

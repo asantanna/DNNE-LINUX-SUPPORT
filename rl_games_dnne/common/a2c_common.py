@@ -2,7 +2,7 @@ import copy
 import os
 import sys
 
-from rl_games.common import vecenv
+from rl_games_dnne.common import vecenv
 
 # DNNE adaptive yielding support
 DNNE_ADAPTIVE_YIELD = os.environ.get('DNNE_ADAPTIVE_YIELD', '0') == '1'
@@ -35,15 +35,15 @@ def DNNE_print(message):
         # For messages without category, just add I/ prefix
         print(f"[DNNE_DEBUG] I/GENERAL: {message}")
 
-from rl_games.algos_torch.moving_mean_std import GeneralizedMovingStats
-from rl_games.algos_torch.self_play_manager import SelfPlayManager
-from rl_games.algos_torch import torch_ext
-from rl_games.common import schedulers
-from rl_games.common.experience import ExperienceBuffer
-from rl_games.common.interval_summary_writer import IntervalSummaryWriter
-from rl_games.common.diagnostics import DefaultDiagnostics, PpoDiagnostics
-from rl_games.algos_torch import  model_builder
-from rl_games.interfaces.base_algorithm import  BaseAlgorithm
+from rl_games_dnne.algos_torch.moving_mean_std import GeneralizedMovingStats
+from rl_games_dnne.algos_torch.self_play_manager import SelfPlayManager
+from rl_games_dnne.algos_torch import torch_ext
+from rl_games_dnne.common import schedulers
+from rl_games_dnne.common.experience import ExperienceBuffer
+from rl_games_dnne.common.interval_summary_writer import IntervalSummaryWriter
+from rl_games_dnne.common.diagnostics import DefaultDiagnostics, PpoDiagnostics
+from rl_games_dnne.algos_torch import  model_builder
+from rl_games_dnne.interfaces.base_algorithm import  BaseAlgorithm
 import numpy as np
 import time
 import gym
@@ -56,7 +56,7 @@ import torch.distributed as dist
  
 from time import sleep
 
-from rl_games.common import common_losses
+from rl_games_dnne.common import common_losses
 
 
 def swap_and_flatten01(arr):
