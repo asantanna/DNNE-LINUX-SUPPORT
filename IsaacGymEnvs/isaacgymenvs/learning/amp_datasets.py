@@ -27,7 +27,7 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import torch
-from rl_games.common import datasets
+from rl_games_dnne.common import datasets
 
 
 class AMPDataset(datasets.PPODataset):
