@@ -851,9 +851,9 @@ class A2CBase(BaseAlgorithm):
             
             # DNNE adaptive yield after each environment step
             if DNNE_ADAPTIVE_YIELD:
-            # print(f"[FREEZE_DEBUG 13] About to call Global.sync_adaptive_yield()", flush=True)
+                # print(f"[FREEZE_DEBUG 13] About to call Global.sync_adaptive_yield()", flush=True)
                 Global.sync_adaptive_yield()
-            # print(f"[FREEZE_DEBUG 14] Global.sync_adaptive_yield() completed", flush=True)
+                # print(f"[FREEZE_DEBUG 14] Global.sync_adaptive_yield() completed", flush=True)
             
             # PPO_CYCLE_DEBUG logging
             if ppo_cycle_debug:
@@ -927,7 +927,7 @@ class A2CBase(BaseAlgorithm):
             
             # print(f"[FREEZE_DEBUG 19] End of loop iteration n={n}", flush=True)
 
-            # print(f"[FREEZE_DEBUG 20] Exited horizon loop, about to get last_values", flush=True)
+        # print(f"[FREEZE_DEBUG 20] Exited horizon loop, about to get last_values", flush=True)
         last_values = self.get_values(self.obs)
             # print(f"[FREEZE_DEBUG 21] Got last_values", flush=True)
 
@@ -1160,9 +1160,9 @@ class DiscreteA2CBase(A2CBase):
             self.last_lr, self.entropy_coef = self.scheduler.update(self.last_lr, self.entropy_coef, self.epoch_num, 0, av_kls.item())
             self.update_lr(self.last_lr)
             kls.append(av_kls)
-            debug_print(f"🔸 About to call diagnostics.mini_epoch for mini_ep={mini_ep}")
+            # debug_print(f"🔸 About to call diagnostics.mini_epoch for mini_ep={mini_ep}")
             self.diagnostics.mini_epoch(self, mini_ep)
-            debug_print(f"🔸 Completed diagnostics.mini_epoch")
+            # debug_print(f"🔸 Completed diagnostics.mini_epoch")
             if self.normalize_input:
                 self.model.running_mean_std.eval() # don't need to update statstics more than one miniepoch
             
@@ -1444,32 +1444,32 @@ class ContinuousA2CBase(A2CBase):
         import time
         
         # Debug print with time delta
-        if not hasattr(self, '_last_debug_time'):
-            self._last_debug_time = time.time()
+        # if not hasattr(self, '_last_debug_time'):
+        #     self._last_debug_time = time.time()
+        # 
+        # def debug_print(msg):
+        #     current_time = time.time()
+        #     delta = current_time - self._last_debug_time
+        #     self._last_debug_time = current_time
+        #     print(f"[DNNE_DEBUG +{delta:.3f}s] {msg}", flush=True)
         
-        def debug_print(msg):
-            current_time = time.time()
-            delta = current_time - self._last_debug_time
-            self._last_debug_time = current_time
-            print(f"[DNNE_DEBUG +{delta:.3f}s] {msg}", flush=True)
-        
-        debug_print("🎪 Entered CORRECT train_epoch() method")
+        # debug_print("🎪 Entered CORRECT train_epoch() method")
         super().train_epoch()
-        debug_print("🎪 super().train_epoch() completed")
+        # debug_print("🎪 super().train_epoch() completed")
 
         self.set_eval()
-        debug_print("🎪 set_eval() completed")
+        # debug_print("🎪 set_eval() completed")
         play_time_start = time.time()
         
         # print(f"[DNNE_DEBUG] 🎭 About to enter torch.no_grad() context", flush=True)
         with torch.no_grad():
-        # print(f"[DNNE_DEBUG] 🎪 Inside torch.no_grad() context", flush=True)
+            # print(f"[DNNE_DEBUG] 🎪 Inside torch.no_grad() context", flush=True)
             if self.is_rnn:
                 batch_dict = self.play_steps_rnn()
             else:
-        # print(f"[DNNE_DEBUG] 🎬 About to call play_steps()", flush=True)
+                # print(f"[DNNE_DEBUG] 🎬 About to call play_steps()", flush=True)
                 batch_dict = self.play_steps()
-        # print(f"[DNNE_DEBUG] 🔙 Back from play_steps() - got batch_dict", flush=True)
+                # print(f"[DNNE_DEBUG] 🔙 Back from play_steps() - got batch_dict", flush=True)
         # print(f"[DNNE_DEBUG] 🎭 Exited torch.no_grad() context", flush=True)
 
         play_time_end = time.time()
@@ -1498,48 +1498,48 @@ class ContinuousA2CBase(A2CBase):
         entropies = []
         kls = []
 
-        debug_print(f"🏋️ Starting training updates (mini_epochs: {self.mini_epochs_num})")
-        debug_print(f"🏋️ About to check dataset type and length")
-        debug_print(f"🏋️ Dataset type: {type(self.dataset)}")
+        # debug_print(f"🏋️ Starting training updates (mini_epochs: {self.mini_epochs_num})")
+        # debug_print(f"🏋️ About to check dataset type and length")
+        # debug_print(f"🏋️ Dataset type: {type(self.dataset)}")
         dataset_len = len(self.dataset)
-        debug_print(f"🏋️ Dataset length: {dataset_len}")
+        # debug_print(f"🏋️ Dataset length: {dataset_len}")
 
-        debug_print("🏋️ About to start for loop")
+        # debug_print("🏋️ About to start for loop")
         for mini_ep in range(0, self.mini_epochs_num):
             # print(f"[FREEZE_DEBUG] MINI-EPOCH {mini_ep}/{self.mini_epochs_num} STARTING", flush=True)
-            if mini_ep > 0:
-                debug_print(f"🔸 At top of loop, about to start mini-epoch {mini_ep}")
+            # if mini_ep > 0:
+            #     debug_print(f"🔸 At top of loop, about to start mini-epoch {mini_ep}")
             mini_ep_start = time.time()
-            debug_print(f"🔸 Starting mini-epoch {mini_ep}/{self.mini_epochs_num}")
+            # debug_print(f"🔸 Starting mini-epoch {mini_ep}/{self.mini_epochs_num}")
             ep_kls = []
             batch_times = []
             for i in range(len(self.dataset)):
-                if i == 0:
-                    debug_print(f"🔹 Starting first batch of mini-epoch {mini_ep}")
-                    debug_print("🔹 About to call train_actor_critic with batch data")
-                elif i == 64:
-                    debug_print(f"🔹 Halfway through batches (batch {i})")
+                # if i == 0:
+                #     debug_print(f"🔹 Starting first batch of mini-epoch {mini_ep}")
+                #     debug_print("🔹 About to call train_actor_critic with batch data")
+                # elif i == 64:
+                #     debug_print(f"🔹 Halfway through batches (batch {i})")
                 batch_start = time.time()
                 a_loss, c_loss, entropy, kl, last_lr, lr_mul, cmu, csigma, b_loss = self.train_actor_critic(self.dataset[i])
                 batch_duration = time.time() - batch_start
                 batch_times.append(batch_duration)
-                if i == 0:
-                    debug_print(f"🔹 Completed first train_actor_critic call in {batch_duration:.3f}s")
-                elif i == 64:
-                    mid_total = sum(batch_times)
-                    debug_print(f"🔹 Halfway point: processed 65 batches in {mid_total:.3f}s")
-                elif i == len(self.dataset) - 1:
-                    debug_print(f"🔹 Completed last batch ({i}) in {batch_duration:.3f}s")
-                    avg_batch_time = sum(batch_times) / len(batch_times)
-                    total_batch_time = sum(batch_times)
-                    debug_print(f"🔹 Batch stats: avg={avg_batch_time*1000:.1f}ms, total={total_batch_time:.3f}s, count={len(batch_times)}")
+                # if i == 0:
+                #     debug_print(f"🔹 Completed first train_actor_critic call in {batch_duration:.3f}s")
+                # elif i == 64:
+                #     mid_total = sum(batch_times)
+                #     debug_print(f"🔹 Halfway point: processed 65 batches in {mid_total:.3f}s")
+                # elif i == len(self.dataset) - 1:
+                #     debug_print(f"🔹 Completed last batch ({i}) in {batch_duration:.3f}s")
+                #     avg_batch_time = sum(batch_times) / len(batch_times)
+                #     total_batch_time = sum(batch_times)
+                #     debug_print(f"🔹 Batch stats: avg={avg_batch_time*1000:.1f}ms, total={total_batch_time:.3f}s, count={len(batch_times)}")
                 a_losses.append(a_loss)
                 c_losses.append(c_loss)
                 ep_kls.append(kl)
                 entropies.append(entropy)
             
             # Debug: print when all batches in mini-epoch are done
-            debug_print(f"🔸 Completed all {len(self.dataset)} batches in mini-epoch {mini_ep}")
+            # debug_print(f"🔸 Completed all {len(self.dataset)} batches in mini-epoch {mini_ep}")
             
             if self.bounds_loss_coef is not None:
                 b_losses.append(b_loss)
@@ -1562,9 +1562,9 @@ class ContinuousA2CBase(A2CBase):
                 self.update_lr(self.last_lr)
 
             kls.append(av_kls)
-            debug_print(f"🔸 About to call diagnostics.mini_epoch for mini_ep={mini_ep}")
+            # debug_print(f"🔸 About to call diagnostics.mini_epoch for mini_ep={mini_ep}")
             self.diagnostics.mini_epoch(self, mini_ep)
-            debug_print(f"🔸 Completed diagnostics.mini_epoch")
+            # debug_print(f"🔸 Completed diagnostics.mini_epoch")
             if self.normalize_input:
                 self.model.running_mean_std.eval() # don't need to update statstics more than one miniepoch
             
@@ -1572,9 +1572,9 @@ class ContinuousA2CBase(A2CBase):
             if DNNE_ADAPTIVE_YIELD:
                 Global.sync_adaptive_yield()
             
-            debug_print(f"🔸 End of mini-epoch {mini_ep} loop iteration")
+            # debug_print(f"🔸 End of mini-epoch {mini_ep} loop iteration")
 
-        debug_print("🏋️ Exited mini-epoch for loop")
+        # debug_print("🏋️ Exited mini-epoch for loop")
         update_time_end = time.time()
         play_time = play_time_end - play_time_start
         update_time = update_time_end - update_time_start
