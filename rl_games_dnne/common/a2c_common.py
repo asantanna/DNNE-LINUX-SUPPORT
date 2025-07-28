@@ -7,12 +7,12 @@ from rl_games_dnne.common import vecenv
 # DNNE adaptive yielding support
 DNNE_ADAPTIVE_YIELD = os.environ.get('DNNE_ADAPTIVE_YIELD', '0') == '1'
 if DNNE_ADAPTIVE_YIELD:
-    print(f"[DNNE_DEBUG] I/RL_GAMES: DNNE_ADAPTIVE_YIELD=1, current dir: {os.getcwd()}") #DBG_TAG#
-    print(f"[DNNE_DEBUG] I/RL_GAMES: sys.path: {sys.path[:5]}...")  # First 5 entries #DBG_TAG#
+    # print(f"[DNNE_DEBUG] I/RL_GAMES: DNNE_ADAPTIVE_YIELD=1, current dir: {os.getcwd()}") #DBG_TAG#
+    # print(f"[DNNE_DEBUG] I/RL_GAMES: sys.path: {sys.path[:5]}...")  # First 5 entries #DBG_TAG#
     try:
         # Import from the exported framework location
         from framework.globals import Global
-        print("[DNNE_DEBUG] I/RL_GAMES: Adaptive yielding enabled - imported Global from framework") #DBG_TAG#
+        # print("[DNNE_DEBUG] I/RL_GAMES: Adaptive yielding enabled - imported Global from framework") #DBG_TAG#
     except ImportError as e:
         raise RuntimeError(
             f"DNNE_ADAPTIVE_YIELD=1 but cannot import framework.globals: {e}\n"
@@ -778,43 +778,56 @@ class A2CBase(BaseAlgorithm):
         cycle_count = 0
         
         # DNNE DEBUG - track play_steps calls
-        if not hasattr(self, '_dnne_play_steps_count'): #DBG_TAG#
-            self._dnne_play_steps_count = 0 #DBG_TAG#
-        self._dnne_play_steps_count += 1 #DBG_TAG#
+        # if not hasattr(self, '_dnne_play_steps_count'): #DBG_TAG#
+            # self._dnne_play_steps_count = 0 #DBG_TAG#
+        # self._dnne_play_steps_count += 1 #DBG_TAG#
         
         # Create debug_print function if not in train_epoch
-        if not hasattr(self, '_last_debug_time'): #DBG_TAG#
-            self._last_debug_time = time_module.time() #DBG_TAG#
+        # if not hasattr(self, '_last_debug_time'): #DBG_TAG#
+            # self._last_debug_time = time_module.time() #DBG_TAG#
         
-        def debug_print_ps(msg): #DBG_TAG#
-            current_time = time_module.time() #DBG_TAG#
-            delta = current_time - self._last_debug_time #DBG_TAG#
-            self._last_debug_time = current_time #DBG_TAG#
-            print(f"[DNNE_DEBUG +{delta:.3f}s] {msg}", flush=True) #DBG_TAG#
+        # def debug_print_ps(msg): #DBG_TAG#
+            # current_time = time_module.time() #DBG_TAG#
+            # delta = current_time - self._last_debug_time #DBG_TAG#
+            # self._last_debug_time = current_time #DBG_TAG#
+            # print(f"[DNNE_DEBUG +{delta:.3f}s] {msg}", flush=True) #DBG_TAG#
         
         # Always print
-        debug_print_ps(f"🎮 play_steps() call #{self._dnne_play_steps_count} - horizon_length: {self.horizon_length}, epoch: {self.epoch_num}") #DBG_TAG#
+        # debug_print_ps(f"🎮 play_steps() call #{self._dnne_play_steps_count} - horizon_length: {self.horizon_length}, epoch: {self.epoch_num}") #DBG_TAG#
         
-        print(f"[FREEZE_DEBUG 1] About to enter horizon loop, range(0, {self.horizon_length})", flush=True) #DBG_TAG#
+        # print(f"[FREEZE_DEBUG 1] About to enter horizon loop, range(0, {self.horizon_length})", flush=True) #DBG_TAG#
 
         for n in range(self.horizon_length):
-            print(f"[FREEZE_DEBUG 2] Starting loop iteration n={n}", flush=True) #DBG_TAG#
+            # print(f"[FREEZE_DEBUG 2] Starting loop iteration n={n}", flush=True) #DBG_TAG#
+            
+            # Print yield statistics every 10 seconds inside play_steps
+            if DNNE_ADAPTIVE_YIELD and n % 4 == 0:  # Check every 4 iterations
+                current_time = time.time()
+                if not hasattr(self, '_last_yield_report_time_ps'):
+                    self._last_yield_report_time_ps = 0
+                
+                if current_time - self._last_yield_report_time_ps >= 10.0:
+                    try:
+                        Global.print_concurrency_report()
+                        self._last_yield_report_time_ps = current_time
+                    except Exception as e:
+                        print(f"[YIELD_STATS] Could not print concurrency report: {e}", flush=True)
             
             if self.use_action_masks:
-                print(f"[FREEZE_DEBUG 3] Getting action masks", flush=True) #DBG_TAG#
+                # print(f"[FREEZE_DEBUG 3] Getting action masks", flush=True) #DBG_TAG#
                 masks = self.vec_env.get_action_masks()
-                print(f"[FREEZE_DEBUG 4] Got masks, calling get_masked_action_values", flush=True) #DBG_TAG#
+                # print(f"[FREEZE_DEBUG 4] Got masks, calling get_masked_action_values", flush=True) #DBG_TAG#
                 res_dict = self.get_masked_action_values(self.obs, masks)
             else:
-                print(f"[FREEZE_DEBUG 3] No action masks, calling get_action_values", flush=True) #DBG_TAG#
+                # print(f"[FREEZE_DEBUG 3] No action masks, calling get_action_values", flush=True) #DBG_TAG#
                 res_dict = self.get_action_values(self.obs)
-                print(f"[FREEZE_DEBUG 4] Got action values, res_dict keys: {list(res_dict.keys())}", flush=True) #DBG_TAG#
+                # print(f"[FREEZE_DEBUG 4] Got action values, res_dict keys: {list(res_dict.keys())}", flush=True) #DBG_TAG#
 
-            print(f"[FREEZE_DEBUG 5] Updating experience buffer with observations", flush=True) #DBG_TAG#
+            # print(f"[FREEZE_DEBUG 5] Updating experience buffer with observations", flush=True) #DBG_TAG#
             self.experience_buffer.update_data('obses', n, self.obs['obs'])
             self.experience_buffer.update_data('dones', n, self.dones)
 
-            print(f"[FREEZE_DEBUG 6] Updating experience buffer with res_dict keys: {update_list}", flush=True) #DBG_TAG#
+            # print(f"[FREEZE_DEBUG 6] Updating experience buffer with res_dict keys: {update_list}", flush=True) #DBG_TAG#
             for k in update_list:
                 self.experience_buffer.update_data(k, n, res_dict[k]) 
             if self.has_central_value:
@@ -822,37 +835,37 @@ class A2CBase(BaseAlgorithm):
 
             step_time_start = time.time()
             # DNNE DEBUG - measure env step time
-            env_step_start = time.time() #DBG_TAG#
-            print(f"[FREEZE_DEBUG 7] About to call env_step with actions shape: {res_dict['actions'].shape}", flush=True) #DBG_TAG#
-            print(f"[FREEZE_DEBUG 7.1] self.vec_env type: {type(self.vec_env)}", flush=True) #DBG_TAG#
-            print(f"[FREEZE_DEBUG 7.2] About to call self.vec_env.step", flush=True) #DBG_TAG#
+            # env_step_start = time.time() #DBG_TAG#
+            # print(f"[FREEZE_DEBUG 7] About to call env_step with actions shape: {res_dict['actions'].shape}", flush=True) #DBG_TAG#
+            # print(f"[FREEZE_DEBUG 7.1] self.vec_env type: {type(self.vec_env)}", flush=True) #DBG_TAG#
+            # print(f"[FREEZE_DEBUG 7.2] About to call self.vec_env.step", flush=True) #DBG_TAG#
             self.obs, rewards, self.dones, infos = self.env_step(res_dict['actions'])
-            print(f"[FREEZE_DEBUG 8] env_step completed", flush=True) #DBG_TAG#
-            print(f"[FREEZE_DEBUG 8.1] obs shape: {self.obs['obs'].shape if 'obs' in self.obs else 'No obs key'}", flush=True) #DBG_TAG#
-            print(f"[FREEZE_DEBUG 8.2] rewards shape: {rewards.shape}", flush=True) #DBG_TAG#
-            print(f"[FREEZE_DEBUG 8.3] dones shape: {self.dones.shape}", flush=True) #DBG_TAG#
-            print(f"[FREEZE_DEBUG 8.4] infos keys: {list(infos.keys()) if infos else 'None'}", flush=True) #DBG_TAG#
-            env_step_duration = time.time() - env_step_start #DBG_TAG#
-            print(f"[FREEZE_DEBUG 8.5] env_step took {env_step_duration:.3f}s", flush=True) #DBG_TAG#
+            # print(f"[FREEZE_DEBUG 8] env_step completed", flush=True) #DBG_TAG#
+            # print(f"[FREEZE_DEBUG 8.1] obs shape: {self.obs['obs'].shape if 'obs' in self.obs else 'No obs key'}", flush=True) #DBG_TAG#
+            # print(f"[FREEZE_DEBUG 8.2] rewards shape: {rewards.shape}", flush=True) #DBG_TAG#
+            # print(f"[FREEZE_DEBUG 8.3] dones shape: {self.dones.shape}", flush=True) #DBG_TAG#
+            # print(f"[FREEZE_DEBUG 8.4] infos keys: {list(infos.keys()) if infos else 'None'}", flush=True) #DBG_TAG#
+            # env_step_duration = time.time() - env_step_start #DBG_TAG#
+            # print(f"[FREEZE_DEBUG 8.5] env_step took {env_step_duration:.3f}s", flush=True) #DBG_TAG#
             
             step_time_end = time.time()
             step_time += (step_time_end - step_time_start)
 
-            print(f"[FREEZE_DEBUG 9] About to call rewards_shaper", flush=True) #DBG_TAG#
+            # print(f"[FREEZE_DEBUG 9] About to call rewards_shaper", flush=True) #DBG_TAG#
             shaped_rewards = self.rewards_shaper(rewards)
-            print(f"[FREEZE_DEBUG 10] rewards_shaper completed, shaped_rewards shape: {shaped_rewards.shape}", flush=True) #DBG_TAG#
+            # print(f"[FREEZE_DEBUG 10] rewards_shaper completed, shaped_rewards shape: {shaped_rewards.shape}", flush=True) #DBG_TAG#
             if self.value_bootstrap and 'time_outs' in infos:
                 shaped_rewards += self.gamma * res_dict['values'] * self.cast_obs(infos['time_outs']).unsqueeze(1).float()
 
-            print(f"[FREEZE_DEBUG 11] About to update experience buffer with rewards", flush=True) #DBG_TAG#
+            # print(f"[FREEZE_DEBUG 11] About to update experience buffer with rewards", flush=True) #DBG_TAG#
             self.experience_buffer.update_data('rewards', n, shaped_rewards)
-            print(f"[FREEZE_DEBUG 12] Experience buffer updated, DNNE_ADAPTIVE_YIELD={DNNE_ADAPTIVE_YIELD}", flush=True) #DBG_TAG#
+            # print(f"[FREEZE_DEBUG 12] Experience buffer updated, DNNE_ADAPTIVE_YIELD={DNNE_ADAPTIVE_YIELD}", flush=True) #DBG_TAG#
             
             # DNNE adaptive yield after each environment step
             if DNNE_ADAPTIVE_YIELD:
-                print(f"[FREEZE_DEBUG 13] About to call Global.sync_adaptive_yield()", flush=True) #DBG_TAG#
+                # print(f"[FREEZE_DEBUG 13] About to call Global.sync_adaptive_yield()", flush=True) #DBG_TAG#
                 Global.sync_adaptive_yield()
-                print(f"[FREEZE_DEBUG 14] Global.sync_adaptive_yield() completed", flush=True) #DBG_TAG#
+                # print(f"[FREEZE_DEBUG 14] Global.sync_adaptive_yield() completed", flush=True) #DBG_TAG#
             
             # PPO_CYCLE_DEBUG logging
             if ppo_cycle_debug:
@@ -903,20 +916,20 @@ class A2CBase(BaseAlgorithm):
                 reward = rewards[0].item() if rewards.numel() > 0 else 0.0
                 DNNE_print(f"PPO_CYCLE: Step {n + 1}: action={action:.4f}, value={value:.4f}, reward={reward:.4f}")
 
-            print(f"[FREEZE_DEBUG 15] About to update current rewards/lengths", flush=True) #DBG_TAG#
+            # print(f"[FREEZE_DEBUG 15] About to update current rewards/lengths", flush=True) #DBG_TAG#
             self.current_rewards += rewards
             self.current_shaped_rewards += shaped_rewards
             self.current_lengths += 1
-            print(f"[FREEZE_DEBUG 16] About to check done indices", flush=True) #DBG_TAG#
+            # print(f"[FREEZE_DEBUG 16] About to check done indices", flush=True) #DBG_TAG#
             all_done_indices = self.dones.nonzero(as_tuple=False)
             env_done_indices = all_done_indices[::self.num_agents]
      
             self.game_rewards.update(self.current_rewards[env_done_indices])
             self.game_shaped_rewards.update(self.current_shaped_rewards[env_done_indices])
             self.game_lengths.update(self.current_lengths[env_done_indices])
-            print(f"[FREEZE_DEBUG 17] About to process infos", flush=True) #DBG_TAG#
+            # print(f"[FREEZE_DEBUG 17] About to process infos", flush=True) #DBG_TAG#
             self.algo_observer.process_infos(infos, env_done_indices)
-            print(f"[FREEZE_DEBUG 18] Processed infos, about to calculate not_dones", flush=True) #DBG_TAG#
+            # print(f"[FREEZE_DEBUG 18] Processed infos, about to calculate not_dones", flush=True) #DBG_TAG#
 
             not_dones = 1.0 - self.dones.float()
 
@@ -924,11 +937,11 @@ class A2CBase(BaseAlgorithm):
             self.current_shaped_rewards = self.current_shaped_rewards * not_dones.unsqueeze(1)
             self.current_lengths = self.current_lengths * not_dones
             
-            print(f"[FREEZE_DEBUG 19] End of loop iteration n={n}", flush=True) #DBG_TAG#
+            # print(f"[FREEZE_DEBUG 19] End of loop iteration n={n}", flush=True) #DBG_TAG#
 
-        print(f"[FREEZE_DEBUG 20] Exited horizon loop, about to get last_values", flush=True) #DBG_TAG#
+        # print(f"[FREEZE_DEBUG 20] Exited horizon loop, about to get last_values", flush=True) #DBG_TAG#
         last_values = self.get_values(self.obs)
-        print(f"[FREEZE_DEBUG 21] Got last_values", flush=True) #DBG_TAG#
+        # print(f"[FREEZE_DEBUG 21] Got last_values", flush=True) #DBG_TAG#
 
         fdones = self.dones.float()
         mb_fdones = self.experience_buffer.tensor_dict['dones'].float()
@@ -1074,42 +1087,42 @@ class DiscreteA2CBase(A2CBase):
         self.tensor_list = self.update_list + ['obses', 'states', 'dones']
 
     def train_epoch(self):
-        print(f"[DNNE_DEBUG] 🎪 Entered train_epoch() method", flush=True) #DBG_TAG#
+        # print(f"[DNNE_DEBUG] 🎪 Entered train_epoch() method", flush=True) #DBG_TAG#
         super().train_epoch()
-        print(f"[DNNE_DEBUG] 🎪 super().train_epoch() completed", flush=True) #DBG_TAG#
+        # print(f"[DNNE_DEBUG] 🎪 super().train_epoch() completed", flush=True) #DBG_TAG#
 
         self.set_eval()
-        print(f"[DNNE_DEBUG] 🎪 set_eval() completed", flush=True) #DBG_TAG#
+        # print(f"[DNNE_DEBUG] 🎪 set_eval() completed", flush=True) #DBG_TAG#
         play_time_start = time.time()
 
-        print(f"[DNNE_DEBUG] 🎭 Entering torch.no_grad() context", flush=True) #DBG_TAG#
+        # print(f"[DNNE_DEBUG] 🎭 Entering torch.no_grad() context", flush=True) #DBG_TAG#
         import torch
-        print(f"[DNNE_DEBUG] 🎭 torch imported, creating context...", flush=True) #DBG_TAG#
+        # print(f"[DNNE_DEBUG] 🎭 torch imported, creating context...", flush=True) #DBG_TAG#
         with torch.no_grad():
-            print(f"[DNNE_DEBUG] 🎪 Inside torch.no_grad() context", flush=True) #DBG_TAG#
+            # print(f"[DNNE_DEBUG] 🎪 Inside torch.no_grad() context", flush=True) #DBG_TAG#
             if self.is_rnn:
                 batch_dict = self.play_steps_rnn()
             else:
-                print(f"[DNNE_DEBUG] 🎬 About to call play_steps() in train_epoch", flush=True) #DBG_TAG#
+                # print(f"[DNNE_DEBUG] 🎬 About to call play_steps() in train_epoch", flush=True) #DBG_TAG#
                 try:
-                    print(f"[DNNE_DEBUG] 🎬 Calling play_steps...", flush=True) #DBG_TAG#
+                    # print(f"[DNNE_DEBUG] 🎬 Calling play_steps...", flush=True) #DBG_TAG#
                     import sys
                     sys.stdout.flush()
-                    print(f"[DNNE_DEBUG] 🎬 Right before assignment", flush=True) #DBG_TAG#
+                    # print(f"[DNNE_DEBUG] 🎬 Right before assignment", flush=True) #DBG_TAG#
                     batch_dict = self.play_steps()
-                    print(f"[DNNE_DEBUG] 🔙 Assignment complete!", flush=True) #DBG_TAG#
+                    # print(f"[DNNE_DEBUG] 🔙 Assignment complete!", flush=True) #DBG_TAG#
                     sys.stdout.flush()
-                    print(f"[DNNE_DEBUG] 🔙 Back from play_steps() - assignment complete", flush=True) #DBG_TAG#
+                    # print(f"[DNNE_DEBUG] 🔙 Back from play_steps() - assignment complete", flush=True) #DBG_TAG#
                 except Exception as e:
-                    print(f"[DNNE_DEBUG] ❌ Exception in play_steps: {e}", flush=True) #DBG_TAG#
+                    # print(f"[DNNE_DEBUG] ❌ Exception in play_steps: {e}", flush=True) #DBG_TAG#
                     raise
 
-        print(f"[DNNE_DEBUG] ✅ play_steps() completed, got batch_dict", flush=True) #DBG_TAG#
-        print(f"[DNNE_DEBUG] 📊 batch_dict type: {type(batch_dict)}", flush=True) #DBG_TAG#
-        print(f"[DNNE_DEBUG] 🎭 About to exit torch.no_grad() context", flush=True) #DBG_TAG#
-        print(f"[DNNE_DEBUG] 🎭 Exited torch.no_grad() context - this is outside the with block", flush=True) #DBG_TAG#
+        # print(f"[DNNE_DEBUG] ✅ play_steps() completed, got batch_dict", flush=True) #DBG_TAG#
+        # print(f"[DNNE_DEBUG] 📊 batch_dict type: {type(batch_dict)}", flush=True) #DBG_TAG#
+        # print(f"[DNNE_DEBUG] 🎭 About to exit torch.no_grad() context", flush=True) #DBG_TAG#
+        # print(f"[DNNE_DEBUG] 🎭 Exited torch.no_grad() context - this is outside the with block", flush=True) #DBG_TAG#
 
-        print(f"[DNNE_DEBUG] 🔄 About to call set_train()", flush=True) #DBG_TAG#
+        # print(f"[DNNE_DEBUG] 🔄 About to call set_train()", flush=True) #DBG_TAG#
         self.set_train()
 
         play_time_end = time.time()
@@ -1118,11 +1131,11 @@ class DiscreteA2CBase(A2CBase):
 
         self.curr_frames = batch_dict.pop('played_frames')
         
-        print(f"[DNNE_DEBUG] 📊 About to call prepare_dataset()", flush=True) #DBG_TAG#
+        # print(f"[DNNE_DEBUG] 📊 About to call prepare_dataset()", flush=True) #DBG_TAG#
         prepare_start = time.time()
         self.prepare_dataset(batch_dict)
         prepare_duration = time.time() - prepare_start
-        print(f"[DNNE_DEBUG] ✅ prepare_dataset() completed in {prepare_duration:.3f}s", flush=True) #DBG_TAG#
+        # print(f"[DNNE_DEBUG] ✅ prepare_dataset() completed in {prepare_duration:.3f}s", flush=True) #DBG_TAG#
         self.algo_observer.after_steps()
 
         a_losses = []
@@ -1132,14 +1145,14 @@ class DiscreteA2CBase(A2CBase):
         if self.has_central_value:
             self.train_central_value()
 
-        print(f"[DNNE_DEBUG] 🏋️ Starting training updates (mini_epochs: {self.mini_epochs_num}, dataset_size: {len(self.dataset)})", flush=True) #DBG_TAG#
+        # print(f"[DNNE_DEBUG] 🏋️ Starting training updates (mini_epochs: {self.mini_epochs_num}, dataset_size: {len(self.dataset)})", flush=True) #DBG_TAG#
         
         # Track if this is where the pause happens
         # training_start = time.time()
 
         for mini_ep in range(0, self.mini_epochs_num):
-            print(f"[FREEZE_DEBUG] MINI-EPOCH {mini_ep}/{self.mini_epochs_num} STARTING", flush=True) #DBG_TAG#
-            print(f"[DNNE_DEBUG] 🔸 Starting mini-epoch {mini_ep}/{self.mini_epochs_num}", flush=True) #DBG_TAG#
+            # print(f"[FREEZE_DEBUG] MINI-EPOCH {mini_ep}/{self.mini_epochs_num} STARTING", flush=True) #DBG_TAG#
+            # print(f"[DNNE_DEBUG] 🔸 Starting mini-epoch {mini_ep}/{self.mini_epochs_num}", flush=True) #DBG_TAG#
             ep_kls = []
             for i in range(len(self.dataset)):
                 a_loss, c_loss, entropy, kl, last_lr, lr_mul = self.train_actor_critic(self.dataset[i])
@@ -1175,7 +1188,7 @@ class DiscreteA2CBase(A2CBase):
         update_time = update_time_end - update_time_start
         total_time = update_time_end - play_time_start
         
-        print(f"[DNNE_DEBUG] 🏁 train_epoch() completed - total_time: {total_time:.3f}s", flush=True) #DBG_TAG#
+        # print(f"[DNNE_DEBUG] 🏁 train_epoch() completed - total_time: {total_time:.3f}s", flush=True) #DBG_TAG#
 
         return batch_dict['step_time'], play_time, update_time, total_time, a_losses, c_losses, entropies, kls, last_lr, lr_mul
 
@@ -1254,8 +1267,8 @@ class DiscreteA2CBase(A2CBase):
             self.model.load_state_dict(model_params[0])
 
         # DNNE DEBUG - print once at start of training loop
-        print("[DNNE_DEBUG] 🚀 Main training loop starting!", flush=True) #DBG_TAG#
-        print(f"[DNNE_DEBUG] 🔢 Initial values - epoch: {self.epoch_num}, frame: {self.frame}", flush=True) #DBG_TAG#
+        # print("[DNNE_DEBUG] 🚀 Main training loop starting!", flush=True) #DBG_TAG#
+        # print(f"[DNNE_DEBUG] 🔢 Initial values - epoch: {self.epoch_num}, frame: {self.frame}", flush=True) #DBG_TAG#
         
         
         # DNNE DEBUG - track time for periodic heartbeat and pause detection
@@ -1268,9 +1281,9 @@ class DiscreteA2CBase(A2CBase):
         #     print(f"[DNNE_DEBUG @ {time.time():.3f}] {msg}", flush=True)
         
         while True:
-            print(f"[DNNE_DEBUG] 🔁 Top of training loop", flush=True) #DBG_TAG#
-            epoch_num = self.update_epoch() #DBG_TAG#
-            print(f"[DNNE_DEBUG] 📝 update_epoch() returned: {epoch_num}", flush=True) #DBG_TAG#
+            # print(f"[DNNE_DEBUG] 🔁 Top of training loop", flush=True) #DBG_TAG#
+            # epoch_num = self.update_epoch() #DBG_TAG#
+            # print(f"[DNNE_DEBUG] 📝 update_epoch() returned: {epoch_num}", flush=True) #DBG_TAG#
             
             # DNNE DEBUG - check for pauses and print heartbeat
             current_time = time.time()
@@ -1284,27 +1297,39 @@ class DiscreteA2CBase(A2CBase):
             # last_epoch_time = current_time
             
             # Print periodic heartbeat every second
-            if current_time - last_heartbeat >= 1.0: #DBG_TAG#
-                print(f"[DNNE_DEBUG] 💓 Heartbeat at epoch {epoch_num}, time: {current_time:.3f}", flush=True) #DBG_TAG#
-                last_heartbeat = current_time #DBG_TAG#
+            # if current_time - last_heartbeat >= 1.0: #DBG_TAG#
+                # print(f"[DNNE_DEBUG] 💓 Heartbeat at epoch {epoch_num}, time: {current_time:.3f}", flush=True) #DBG_TAG#
+                # last_heartbeat = current_time #DBG_TAG#
             
             # DNNE DEBUG - always print epoch start
-            print(f"[DNNE_DEBUG] 📊 Starting epoch {epoch_num}", flush=True) #DBG_TAG#
+            # print(f"[DNNE_DEBUG] 📊 Starting epoch {epoch_num}", flush=True) #DBG_TAG#
             
             # DNNE DEBUG - measure train_epoch time
-            print(f"[DNNE_DEBUG] 🎯 About to call self.train_epoch()", flush=True) #DBG_TAG#
-            train_epoch_start = time.time()  #DBG_TAG#
+            # print(f"[DNNE_DEBUG] 🎯 About to call self.train_epoch()", flush=True) #DBG_TAG#
+            # train_epoch_start = time.time()  #DBG_TAG#
 
             step_time, play_time, update_time, sum_time, a_losses, c_losses, entropies, kls, last_lr, lr_mul = self.train_epoch()
-            train_epoch_duration = time.time() - train_epoch_start #DBG_TAG#
-            print(f"[DNNE_DEBUG] 🎯 self.train_epoch() returned", flush=True) #DBG_TAG#
+            # train_epoch_duration = time.time() - train_epoch_start #DBG_TAG#
+            # print(f"[DNNE_DEBUG] 🎯 self.train_epoch() returned", flush=True) #DBG_TAG#
             
             # DNNE DEBUG - always print timing info
-            print(f"[DNNE_DEBUG] ⏱️  Epoch {epoch_num} timing - train_epoch: {train_epoch_duration:.3f}s (step: {step_time:.3f}s, play: {play_time:.3f}s, update: {update_time:.3f}s)", flush=True) #DBG_TAG#
+            # print(f"[DNNE_DEBUG] ⏱️  Epoch {epoch_num} timing - train_epoch: {train_epoch_duration:.3f}s (step: {step_time:.3f}s, play: {play_time:.3f}s, update: {update_time:.3f}s)", flush=True) #DBG_TAG#
             
             # DNNE adaptive yield after each epoch
             if DNNE_ADAPTIVE_YIELD:
                 Global.sync_adaptive_yield()
+                
+                # Print yield statistics every 10 seconds
+                current_time = time.time()
+                if not hasattr(self, '_last_yield_report_time'):
+                    self._last_yield_report_time = 0
+                
+                if current_time - self._last_yield_report_time >= 10.0:
+                    try:
+                        Global.print_concurrency_report()
+                        self._last_yield_report_time = current_time
+                    except Exception as e:
+                        print(f"[YIELD_STATS] Could not print concurrency report: {e}", flush=True)
 
             # Check if we should stop after this PPO cycle (after full training)
             ppo_stop_after_cycle = int(os.environ.get('PPO_STOP_AFTER_CYCLE', '0'))
@@ -1405,6 +1430,16 @@ class DiscreteA2CBase(A2CBase):
                 should_exit = should_exit_t.bool().item()
 
             if should_exit:
+                # Print final yield statistics before exiting
+                if DNNE_ADAPTIVE_YIELD:
+                    print("\n[YIELD_STATS] Final concurrency report:")
+                    try:
+                        Global.print_concurrency_report()
+                    except Exception as e:
+                        print(f"[YIELD_STATS] Could not print final concurrency report: {e}")
+                    import sys
+                    sys.stdout.flush()
+                
                 return self.last_mean_rewards, epoch_num
 
 
@@ -1445,51 +1480,51 @@ class ContinuousA2CBase(A2CBase):
         import time
         
         # Debug print with time delta
-        if not hasattr(self, '_last_debug_time'): #DBG_TAG#
-            self._last_debug_time = time.time() #DBG_TAG#
+        # if not hasattr(self, '_last_debug_time'): #DBG_TAG#
+            # self._last_debug_time = time.time() #DBG_TAG#
         
-        def debug_print(msg): #DBG_TAG#
-            current_time = time.time() #DBG_TAG#
-            delta = current_time - self._last_debug_time #DBG_TAG#
-            self._last_debug_time = current_time #DBG_TAG#
-            print(f"[DNNE_DEBUG +{delta:.3f}s] {msg}", flush=True) #DBG_TAG#
+        # def debug_print(msg): #DBG_TAG#
+            # current_time = time.time() #DBG_TAG#
+            # delta = current_time - self._last_debug_time #DBG_TAG#
+            # self._last_debug_time = current_time #DBG_TAG#
+            # print(f"[DNNE_DEBUG +{delta:.3f}s] {msg}", flush=True) #DBG_TAG#
         
-        debug_print("🎪 Entered CORRECT train_epoch() method") #DBG_TAG#
+        # debug_print("🎪 Entered CORRECT train_epoch() method") #DBG_TAG#
         super().train_epoch()
-        debug_print("🎪 super().train_epoch() completed") #DBG_TAG#
+        # debug_print("🎪 super().train_epoch() completed") #DBG_TAG#
 
         self.set_eval()
-        debug_print("🎪 set_eval() completed") #DBG_TAG#
+        # debug_print("🎪 set_eval() completed") #DBG_TAG#
         play_time_start = time.time()
         
-        print(f"[DNNE_DEBUG] 🎭 About to enter torch.no_grad() context", flush=True) #DBG_TAG#
+        # print(f"[DNNE_DEBUG] 🎭 About to enter torch.no_grad() context", flush=True) #DBG_TAG#
         with torch.no_grad():
-            print(f"[DNNE_DEBUG] 🎪 Inside torch.no_grad() context", flush=True) #DBG_TAG#
+            # print(f"[DNNE_DEBUG] 🎪 Inside torch.no_grad() context", flush=True) #DBG_TAG#
             if self.is_rnn:
                 batch_dict = self.play_steps_rnn()
             else:
-                print(f"[DNNE_DEBUG] 🎬 About to call play_steps()", flush=True) #DBG_TAG#
+                # print(f"[DNNE_DEBUG] 🎬 About to call play_steps()", flush=True) #DBG_TAG#
                 batch_dict = self.play_steps()
-                print(f"[DNNE_DEBUG] 🔙 Back from play_steps() - got batch_dict", flush=True) #DBG_TAG#
-        print(f"[DNNE_DEBUG] 🎭 Exited torch.no_grad() context", flush=True) #DBG_TAG#
+                # print(f"[DNNE_DEBUG] 🔙 Back from play_steps() - got batch_dict", flush=True) #DBG_TAG#
+        # print(f"[DNNE_DEBUG] 🎭 Exited torch.no_grad() context", flush=True) #DBG_TAG#
 
         play_time_end = time.time()
-        print(f"[DNNE_DEBUG] ⏱️  play_time_end recorded", flush=True) #DBG_TAG#
+        # print(f"[DNNE_DEBUG] ⏱️  play_time_end recorded", flush=True) #DBG_TAG#
         update_time_start = time.time()
         rnn_masks = batch_dict.get('rnn_masks', None)
 
-        print(f"[DNNE_DEBUG] 🔄 About to call set_train()", flush=True) #DBG_TAG#
+        # print(f"[DNNE_DEBUG] 🔄 About to call set_train()", flush=True) #DBG_TAG#
         self.set_train()
-        print(f"[DNNE_DEBUG] ✅ set_train() completed", flush=True) #DBG_TAG#
+        # print(f"[DNNE_DEBUG] ✅ set_train() completed", flush=True) #DBG_TAG#
         
         self.curr_frames = batch_dict.pop('played_frames')
-        print(f"[DNNE_DEBUG] 📊 About to call prepare_dataset()", flush=True) #DBG_TAG#
+        # print(f"[DNNE_DEBUG] 📊 About to call prepare_dataset()", flush=True) #DBG_TAG#
         self.prepare_dataset(batch_dict)
-        print(f"[DNNE_DEBUG] ✅ prepare_dataset() completed", flush=True) #DBG_TAG#
+        # print(f"[DNNE_DEBUG] ✅ prepare_dataset() completed", flush=True) #DBG_TAG#
         
-        print(f"[DNNE_DEBUG] 📊 About to call algo_observer.after_steps()", flush=True) #DBG_TAG#
+        # print(f"[DNNE_DEBUG] 📊 About to call algo_observer.after_steps()", flush=True) #DBG_TAG#
         self.algo_observer.after_steps()
-        print(f"[DNNE_DEBUG] ✅ algo_observer.after_steps() completed", flush=True) #DBG_TAG#
+        # print(f"[DNNE_DEBUG] ✅ algo_observer.after_steps() completed", flush=True) #DBG_TAG#
         if self.has_central_value:
             self.train_central_value()
 
@@ -1507,11 +1542,11 @@ class ContinuousA2CBase(A2CBase):
 
         # debug_print("🏋️ About to start for loop")
         for mini_ep in range(0, self.mini_epochs_num):
-            print(f"[FREEZE_DEBUG] MINI-EPOCH {mini_ep}/{self.mini_epochs_num} STARTING", flush=True) #DBG_TAG#
-            if mini_ep > 0: #DBG_TAG#
-                debug_print(f"🔸 At top of loop, about to start mini-epoch {mini_ep}") #DBG_TAG#
+            # print(f"[FREEZE_DEBUG] MINI-EPOCH {mini_ep}/{self.mini_epochs_num} STARTING", flush=True) #DBG_TAG#
+            # if mini_ep > 0: #DBG_TAG#
+                # debug_print(f"🔸 At top of loop, about to start mini-epoch {mini_ep}") #DBG_TAG#
             mini_ep_start = time.time()
-            debug_print(f"🔸 Starting mini-epoch {mini_ep}/{self.mini_epochs_num}") #DBG_TAG#
+            # debug_print(f"🔸 Starting mini-epoch {mini_ep}/{self.mini_epochs_num}") #DBG_TAG#
             ep_kls = []
             batch_times = []
             for i in range(len(self.dataset)):
@@ -1525,7 +1560,7 @@ class ContinuousA2CBase(A2CBase):
                 entropies.append(entropy)
             
             # Debug: print when all batches in mini-epoch are done
-            debug_print(f"🔸 Completed all {len(self.dataset)} batches in mini-epoch {mini_ep}") #DBG_TAG#
+            # debug_print(f"🔸 Completed all {len(self.dataset)} batches in mini-epoch {mini_ep}") #DBG_TAG#
             
             if self.bounds_loss_coef is not None:
                 b_losses.append(b_loss)
@@ -1668,7 +1703,7 @@ class ContinuousA2CBase(A2CBase):
                 curr_frames = self.curr_frames * self.world_size if self.multi_gpu else self.curr_frames
                 self.frame += curr_frames
 
-                print_statistics(self.print_stats, curr_frames, step_time, scaled_play_time, scaled_time, epoch_num, self.max_epochs, frame, self.max_frames) #DBG_TAG#
+                # print_statistics(self.print_stats, curr_frames, step_time, scaled_play_time, scaled_time, epoch_num, self.max_epochs, frame, self.max_frames) #DBG_TAG#
 
                 self.write_stats(total_time, epoch_num, step_time, play_time, update_time,
                                 a_losses, c_losses, entropies, kls, last_lr, lr_mul, frame,
@@ -1746,7 +1781,27 @@ class ContinuousA2CBase(A2CBase):
                 dist.broadcast(should_exit_t, 0)
                 should_exit = should_exit_t.float().item()
             if should_exit:
+                # Print final yield statistics before exiting
+                if DNNE_ADAPTIVE_YIELD:
+                    print("\n[YIELD_STATS] Final concurrency report:")
+                    try:
+                        Global.print_concurrency_report()
+                    except Exception as e:
+                        print(f"[YIELD_STATS] Could not print final concurrency report: {e}")
+                    import sys
+                    sys.stdout.flush()
+                
                 return self.last_mean_rewards, epoch_num
 
             if should_exit:
+                # Print final yield statistics before exiting
+                if DNNE_ADAPTIVE_YIELD:
+                    print("\n[YIELD_STATS] Final concurrency report:")
+                    try:
+                        Global.print_concurrency_report()
+                    except Exception as e:
+                        print(f"[YIELD_STATS] Could not print final concurrency report: {e}")
+                    import sys
+                    sys.stdout.flush()
+                
                 return self.last_mean_rewards, epoch_num
