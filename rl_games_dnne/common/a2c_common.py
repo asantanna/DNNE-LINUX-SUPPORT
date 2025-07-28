@@ -778,22 +778,22 @@ class A2CBase(BaseAlgorithm):
         cycle_count = 0
         
         # DNNE DEBUG - track play_steps calls
-        # if not hasattr(self, '_dnne_play_steps_count'):
-        #     self._dnne_play_steps_count = 0
-        # self._dnne_play_steps_count += 1
+        if not hasattr(self, '_dnne_play_steps_count'): #DBG_TAG#
+            self._dnne_play_steps_count = 0 #DBG_TAG#
+        self._dnne_play_steps_count += 1 #DBG_TAG#
         
         # Create debug_print function if not in train_epoch
-        # if not hasattr(self, '_last_debug_time'):
-        #     self._last_debug_time = time_module.time()
-        # 
-        # def debug_print_ps(msg):
-        #     current_time = time_module.time()
-        #     delta = current_time - self._last_debug_time
-        #     self._last_debug_time = current_time
-        #     print(f"[DNNE_DEBUG +{delta:.3f}s] {msg}", flush=True)
+        if not hasattr(self, '_last_debug_time'): #DBG_TAG#
+            self._last_debug_time = time_module.time() #DBG_TAG#
+        
+        def debug_print_ps(msg): #DBG_TAG#
+            current_time = time_module.time() #DBG_TAG#
+            delta = current_time - self._last_debug_time #DBG_TAG#
+            self._last_debug_time = current_time #DBG_TAG#
+            print(f"[DNNE_DEBUG +{delta:.3f}s] {msg}", flush=True) #DBG_TAG#
         
         # Always print
-        # debug_print_ps(f"🎮 play_steps() call #{self._dnne_play_steps_count} - horizon_length: {self.horizon_length}, epoch: {self.epoch_num}")
+        debug_print_ps(f"🎮 play_steps() call #{self._dnne_play_steps_count} - horizon_length: {self.horizon_length}, epoch: {self.epoch_num}") #DBG_TAG#
         
         print(f"[FREEZE_DEBUG 1] About to enter horizon loop, range(0, {self.horizon_length})", flush=True) #DBG_TAG#
 
@@ -1445,21 +1445,21 @@ class ContinuousA2CBase(A2CBase):
         import time
         
         # Debug print with time delta
-        # if not hasattr(self, '_last_debug_time'):
-        #     self._last_debug_time = time.time()
-        # 
-        # def debug_print(msg):
-        #     current_time = time.time()
-        #     delta = current_time - self._last_debug_time
-        #     self._last_debug_time = current_time
-        #     print(f"[DNNE_DEBUG +{delta:.3f}s] {msg}", flush=True)
+        if not hasattr(self, '_last_debug_time'): #DBG_TAG#
+            self._last_debug_time = time.time() #DBG_TAG#
         
-        # debug_print("🎪 Entered CORRECT train_epoch() method")
+        def debug_print(msg): #DBG_TAG#
+            current_time = time.time() #DBG_TAG#
+            delta = current_time - self._last_debug_time #DBG_TAG#
+            self._last_debug_time = current_time #DBG_TAG#
+            print(f"[DNNE_DEBUG +{delta:.3f}s] {msg}", flush=True) #DBG_TAG#
+        
+        debug_print("🎪 Entered CORRECT train_epoch() method") #DBG_TAG#
         super().train_epoch()
-        # debug_print("🎪 super().train_epoch() completed")
+        debug_print("🎪 super().train_epoch() completed") #DBG_TAG#
 
         self.set_eval()
-        # debug_print("🎪 set_eval() completed")
+        debug_print("🎪 set_eval() completed") #DBG_TAG#
         play_time_start = time.time()
         
         print(f"[DNNE_DEBUG] 🎭 About to enter torch.no_grad() context", flush=True) #DBG_TAG#
