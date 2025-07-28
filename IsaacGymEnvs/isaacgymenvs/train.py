@@ -42,7 +42,10 @@ warnings.filterwarnings("ignore", message=".*np.int.*")
 warnings.filterwarnings("ignore", message=".*invalid escape sequence.*")
 
 # Import DNNE_print from debug_utils (doesn't import torch)
-from isaacgymenvs.utils.debug_utils import DNNE_print
+#from isaacgymenvs.utils.debug_utils import DNNE_print
+def DNNE_print(level, tag, message):
+    """Simple print function to mimic DNNE_print behavior"""
+    print(f"[DNNE][{level}] [{tag}] {message}")
 
 # Use rl_games_dnne by default (can be disabled with USE_STANDARD_RL_GAMES=1)
 if os.environ.get('USE_STANDARD_RL_GAMES', '0') != '1':
