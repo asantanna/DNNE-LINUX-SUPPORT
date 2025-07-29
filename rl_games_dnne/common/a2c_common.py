@@ -1,6 +1,7 @@
 import copy
 import os
 import sys
+import logging
 
 from rl_games_dnne.common import vecenv
 
@@ -808,6 +809,10 @@ class A2CBase(BaseAlgorithm):
             # print(f"[FREEZE_DEBUG 2] Starting loop iteration n={n}", flush=True) #DBG_TAG#
             
             # Print yield statistics every 10 seconds inside play_steps
+            if n % 4 == 0:
+                # HACK: Re-enable logger if disabled by Hydra or other config
+                if balancing_logger and hasattr(balancing_logger, 'disabled') and balancing_logger.disabled:
+                    balancing_logger.disabled = False
             if DNNE_ADAPTIVE_YIELD and balancing_logger and balancing_logger.isEnabledFor(logging.DEBUG) and n % 4 == 0:  # Check every 4 iterations
                 current_time = time.time()
                 if not hasattr(self, '_last_yield_report_time_ps'):
