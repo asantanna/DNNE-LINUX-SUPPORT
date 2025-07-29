@@ -6,18 +6,25 @@ from rl_games_dnne.common import vecenv
 
 # DNNE adaptive yielding support
 DNNE_ADAPTIVE_YIELD = os.environ.get('DNNE_ADAPTIVE_YIELD', '0') == '1'
+balancing_logger = None
 if DNNE_ADAPTIVE_YIELD:
     # print(f"[DNNE_DEBUG] I/RL_GAMES: DNNE_ADAPTIVE_YIELD=1, current dir: {os.getcwd()}") #DBG_TAG#
     # print(f"[DNNE_DEBUG] I/RL_GAMES: sys.path: {sys.path[:5]}...")  # First 5 entries #DBG_TAG#
     try:
         # Import from the exported framework location
-        from framework.globals import Global
+        from framework.globals import Global, balancing_logger as _balancing_logger
+        balancing_logger = _balancing_logger  # Assign to module-level variable
         # print("[DNNE_DEBUG] I/RL_GAMES: Adaptive yielding enabled - imported Global from framework") #DBG_TAG#
     except ImportError as e:
-        raise RuntimeError(
-            f"DNNE_ADAPTIVE_YIELD=1 but cannot import framework.globals: {e}\n"
-            "Make sure you're running from a DNNE exported workflow directory"
-        )
+        # Try importing just Global if balancing_logger doesn't exist (backward compatibility)
+        try:
+            from framework.globals import Global
+            # balancing_logger remains None
+        except ImportError:
+            raise RuntimeError(
+                f"DNNE_ADAPTIVE_YIELD=1 but cannot import framework.globals: {e}\n"
+                "Make sure you're running from a DNNE exported workflow directory"
+            )
 
 # Debug print function for consistent logging
 def DNNE_print(message):
@@ -801,7 +808,7 @@ class A2CBase(BaseAlgorithm):
             # print(f"[FREEZE_DEBUG 2] Starting loop iteration n={n}", flush=True) #DBG_TAG#
             
             # Print yield statistics every 10 seconds inside play_steps
-            if DNNE_ADAPTIVE_YIELD and n % 4 == 0:  # Check every 4 iterations
+            if DNNE_ADAPTIVE_YIELD and balancing_logger and balancing_logger.isEnabledFor(logging.DEBUG) and n % 4 == 0:  # Check every 4 iterations
                 current_time = time.time()
                 if not hasattr(self, '_last_yield_report_time_ps'):
                     self._last_yield_report_time_ps = 0
@@ -811,7 +818,10 @@ class A2CBase(BaseAlgorithm):
                         Global.print_concurrency_report()
                         self._last_yield_report_time_ps = current_time
                     except Exception as e:
-                        print(f"[YIELD_STATS] Could not print concurrency report: {e}", flush=True)
+                        if balancing_logger:
+                            balancing_logger.error(f"Could not print concurrency report: {e}")
+                        else:
+                            print(f"[YIELD_STATS] ERROR: Could not print concurrency report: {e}", flush=True)
             
             if self.use_action_masks:
                 # print(f"[FREEZE_DEBUG 3] Getting action masks", flush=True) #DBG_TAG#
@@ -1319,17 +1329,21 @@ class DiscreteA2CBase(A2CBase):
             if DNNE_ADAPTIVE_YIELD:
                 Global.sync_adaptive_yield()
                 
-                # Print yield statistics every 10 seconds
-                current_time = time.time()
-                if not hasattr(self, '_last_yield_report_time'):
-                    self._last_yield_report_time = 0
-                
-                if current_time - self._last_yield_report_time >= 10.0:
-                    try:
-                        Global.print_concurrency_report()
-                        self._last_yield_report_time = current_time
-                    except Exception as e:
-                        print(f"[YIELD_STATS] Could not print concurrency report: {e}", flush=True)
+                # Print yield statistics every 10 seconds if balancing logger is enabled
+                if balancing_logger and balancing_logger.isEnabledFor(logging.DEBUG):
+                    current_time = time.time()
+                    if not hasattr(self, '_last_yield_report_time'):
+                        self._last_yield_report_time = 0
+                    
+                    if current_time - self._last_yield_report_time >= 10.0:
+                        try:
+                            Global.print_concurrency_report()
+                            self._last_yield_report_time = current_time
+                        except Exception as e:
+                            if balancing_logger:
+                                balancing_logger.error(f"Could not print concurrency report: {e}")
+                            else:
+                                print(f"[YIELD_STATS] ERROR: Could not print concurrency report: {e}", flush=True)
 
             # Check if we should stop after this PPO cycle (after full training)
             ppo_stop_after_cycle = int(os.environ.get('PPO_STOP_AFTER_CYCLE', '0'))
@@ -1434,9 +1448,12 @@ class DiscreteA2CBase(A2CBase):
                 if DNNE_ADAPTIVE_YIELD:
                     print("\n[YIELD_STATS] Final concurrency report:")
                     try:
-                        Global.print_concurrency_report()
+                        Global.print_concurrency_report(force_print=True)
                     except Exception as e:
-                        print(f"[YIELD_STATS] Could not print final concurrency report: {e}")
+                        if balancing_logger:
+                            balancing_logger.error(f"Could not print final concurrency report: {e}")
+                        else:
+                            print(f"[YIELD_STATS] ERROR: Could not print final concurrency report: {e}")
                     import sys
                     sys.stdout.flush()
                 
@@ -1785,9 +1802,12 @@ class ContinuousA2CBase(A2CBase):
                 if DNNE_ADAPTIVE_YIELD:
                     print("\n[YIELD_STATS] Final concurrency report:")
                     try:
-                        Global.print_concurrency_report()
+                        Global.print_concurrency_report(force_print=True)
                     except Exception as e:
-                        print(f"[YIELD_STATS] Could not print final concurrency report: {e}")
+                        if balancing_logger:
+                            balancing_logger.error(f"Could not print final concurrency report: {e}")
+                        else:
+                            print(f"[YIELD_STATS] ERROR: Could not print final concurrency report: {e}")
                     import sys
                     sys.stdout.flush()
                 
@@ -1798,9 +1818,12 @@ class ContinuousA2CBase(A2CBase):
                 if DNNE_ADAPTIVE_YIELD:
                     print("\n[YIELD_STATS] Final concurrency report:")
                     try:
-                        Global.print_concurrency_report()
+                        Global.print_concurrency_report(force_print=True)
                     except Exception as e:
-                        print(f"[YIELD_STATS] Could not print final concurrency report: {e}")
+                        if balancing_logger:
+                            balancing_logger.error(f"Could not print final concurrency report: {e}")
+                        else:
+                            print(f"[YIELD_STATS] ERROR: Could not print final concurrency report: {e}")
                     import sys
                     sys.stdout.flush()
                 
