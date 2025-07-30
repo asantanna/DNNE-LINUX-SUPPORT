@@ -878,9 +878,9 @@ class A2CBase(BaseAlgorithm):
             
             # DNNE adaptive yield after each environment step
             if DNNE_ADAPTIVE_YIELD:
-                # print(f"[FREEZE_DEBUG 13] About to call Global.sync_adaptive_yield()", flush=True) #DBG_TAG#
-                Global.sync_adaptive_yield()
-                # print(f"[FREEZE_DEBUG 14] Global.sync_adaptive_yield() completed", flush=True) #DBG_TAG#
+                # print(f"[FREEZE_DEBUG 13] About to call Global.sync_adaptive_yield(subgraph="ppo", is_item_ref=True)", flush=True) #DBG_TAG#
+                Global.sync_adaptive_yield(subgraph="ppo", is_item_ref=True)
+                # print(f"[FREEZE_DEBUG 14] Global.sync_adaptive_yield(subgraph="ppo", is_item_ref=True) completed", flush=True) #DBG_TAG#
             
             # PPO_CYCLE_DEBUG logging
             if ppo_cycle_debug:
@@ -1178,7 +1178,7 @@ class DiscreteA2CBase(A2CBase):
                 
                 # DNNE adaptive yield after each batch
                 if DNNE_ADAPTIVE_YIELD:
-                    Global.sync_adaptive_yield()
+                    Global.sync_adaptive_yield(subgraph="ppo", is_item_ref=False)
 
             av_kls = torch_ext.mean_list(ep_kls)
             if self.multi_gpu:
@@ -1196,7 +1196,7 @@ class DiscreteA2CBase(A2CBase):
             
             # DNNE adaptive yield after each mini-epoch
             if DNNE_ADAPTIVE_YIELD:
-                Global.sync_adaptive_yield()
+                Global.sync_adaptive_yield(subgraph="ppo", is_item_ref=False)
 
         update_time_end = time.time()
         play_time = play_time_end - play_time_start
@@ -1332,7 +1332,7 @@ class DiscreteA2CBase(A2CBase):
             
             # DNNE adaptive yield after each epoch
             if DNNE_ADAPTIVE_YIELD:
-                Global.sync_adaptive_yield()
+                Global.sync_adaptive_yield(subgraph="ppo", is_item_ref=False)
                 
                 # Print yield statistics every 10 seconds if balancing logger is enabled
                 if balancing_logger and balancing_logger.isEnabledFor(logging.DEBUG):
@@ -1613,7 +1613,7 @@ class ContinuousA2CBase(A2CBase):
             
             # DNNE adaptive yield after each mini-epoch
             if DNNE_ADAPTIVE_YIELD:
-                Global.sync_adaptive_yield()
+                Global.sync_adaptive_yield(subgraph="ppo", is_item_ref=False)
             
             # debug_print(f"🔸 End of mini-epoch {mini_ep} loop iteration")
 
