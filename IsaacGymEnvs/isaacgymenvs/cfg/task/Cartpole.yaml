@@ -12,6 +12,9 @@ env:
 
   clipObservations: 5.0
   clipActions: 1.0
+  
+  # Null action for initialization - zero force to cart
+  nullAction: [0.0]
 
   asset:
     assetRoot: "../../assets"

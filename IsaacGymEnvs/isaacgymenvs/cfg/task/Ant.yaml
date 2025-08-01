@@ -11,6 +11,9 @@ env:
   enableDebugVis: False
 
   clipActions: 1.0
+  
+  # Null action for initialization - zero torques to all 8 joints
+  nullAction: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 
   powerScale: 1.0
   controlFrequencyInv: 1 # 60 Hz

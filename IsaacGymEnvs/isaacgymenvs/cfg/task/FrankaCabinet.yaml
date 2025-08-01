@@ -12,6 +12,9 @@ env:
 
   clipObservations: 5.0
   clipActions: 1.0
+  
+  # Null action for initialization - zero torques to 7 arm joints + 2 gripper joints
+  nullAction: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 
   startPositionNoise: 0.0
   startRotationNoise: 0.0

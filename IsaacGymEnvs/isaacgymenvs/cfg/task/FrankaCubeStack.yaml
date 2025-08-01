@@ -12,6 +12,9 @@ env:
 
   clipObservations: 5.0
   clipActions: 1.0
+  
+  # Null action for initialization - OSC: 6 delta EEF + 1 gripper, joint_tor: 7 joints + 1 gripper
+  nullAction: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 
   startPositionNoise: 0.25
   startRotationNoise: 0.785

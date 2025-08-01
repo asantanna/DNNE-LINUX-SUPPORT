@@ -9,6 +9,9 @@ env:
 
   clipObservations: 5.0
   clipActions: 1.0
+  
+  # Null action for initialization - zero torques to all 12 joints (4 legs x 3 joints)
+  nullAction: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 
   plane:
     staticFriction: 1.0  # [-]
