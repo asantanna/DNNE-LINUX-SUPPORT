@@ -33,7 +33,7 @@ import torch
 from isaacgym import gymtorch
 from isaacgym import gymapi
 
-from isaacgymenvs.utils.torch_jit_utils import quat_mul, to_torch, tensor_clamp  
+from isaacgymenvs.utils.torch_jit_utils import quat_mul, quat_apply, to_torch, tensor_clamp  
 from isaacgymenvs.tasks.base.vec_task import VecTask
 
 
@@ -72,10 +72,14 @@ def axisangle2quat(vec, eps=1e-6):
     return quat
 
 
-class FrankaCubeStack(VecTask):
+class Franka_DNNE_Base(VecTask):
 
     def __init__(self, cfg, rl_device, sim_device, graphics_device_id, headless, virtual_screen_capture, force_render):
         self.cfg = cfg
+        
+        # DNNE environments must use single environment
+        if self.cfg["env"]["numEnvs"] != 1:
+            raise ValueError(f"DNNE environments must use numEnvs=1, got {self.cfg['env']['numEnvs']}")
 
         self.max_episode_length = self.cfg["env"]["episodeLength"]
 
@@ -443,17 +447,46 @@ class FrankaCubeStack(VecTask):
         self._update_states()
 
     def compute_reward(self, actions):
-        self.rew_buf[:], self.reset_buf[:] = compute_franka_reward(
-            self.reset_buf, self.progress_buf, self.actions, self.states, self.reward_settings, self.max_episode_length
-        )
+        raise NotImplementedError("This environment is for DNNE only - rewards are computed externally")
 
+    def post_physics_step(self):
+        """Override to prevent auto-termination and compute observations."""
+        self.progress_buf += 1
+        
+        # Handle resets if requested (from DNNE)
+        # Since DNNE only supports single environment (num_envs=1), 
+        # we check if the single environment needs reset
+        if self.reset_buf[0] > 0:
+            # Reset the single environment (index 0)
+            self.reset_idx(torch.tensor([0], device=self.device))
+        
+        # Compute observations (includes episode_elapsed_seconds)
+        self.compute_observations()
+        
+        # Never auto-terminate episodes - DNNE controls termination
+        self.reset_buf[0] = 0
+        
+        # Debug visualization if enabled
+        self._debug_viz()
+        
+        # Compute rewards (will raise NotImplementedError for DNNE)
+        # Skip this for DNNE environments
+        # self.compute_reward(self.actions)
+        
     def compute_observations(self):
         self._refresh()
+        
+        # Calculate episode elapsed time in seconds
+        episode_elapsed_seconds = self.progress_buf.float() * self.dt
+        
         obs = ["cubeA_quat", "cubeA_pos", "cubeA_to_cubeB_pos", "eef_pos", "eef_quat"]
         obs += ["q_gripper"] if self.control_type == "osc" else ["q"]
-        self.obs_buf = torch.cat([self.states[ob] for ob in obs], dim=-1)
-
-        maxs = {ob: torch.max(self.states[ob]).item() for ob in obs}
+        
+        # Concatenate all observations including elapsed time
+        obs_list = [self.states[ob] for ob in obs]
+        obs_list.append(episode_elapsed_seconds.unsqueeze(-1))  # Add elapsed time as last element
+        
+        self.obs_buf = torch.cat(obs_list, dim=-1)
 
         return self.obs_buf
 
@@ -659,17 +692,8 @@ class FrankaCubeStack(VecTask):
         self.gym.set_dof_position_target_tensor(self.sim, gymtorch.unwrap_tensor(self._pos_control))
         self.gym.set_dof_actuation_force_tensor(self.sim, gymtorch.unwrap_tensor(self._effort_control))
 
-    def post_physics_step(self):
-        self.progress_buf += 1
-
-        env_ids = self.reset_buf.nonzero(as_tuple=False).squeeze(-1)
-        if len(env_ids) > 0:
-            self.reset_idx(env_ids)
-
-        self.compute_observations()
-        self.compute_reward(self.actions)
-
-        # debug viz
+    def _debug_viz(self):
+        """Debug visualization for environment."""
         if self.viewer and self.debug_viz:
             self.gym.clear_lines(self.viewer)
             self.gym.refresh_rigid_body_state_tensor(self.sim)
@@ -699,54 +723,4 @@ class FrankaCubeStack(VecTask):
 #####################################################################
 
 
-@torch.jit.script
-def compute_franka_reward(
-    reset_buf, progress_buf, actions, states, reward_settings, max_episode_length
-):
-    # type: (Tensor, Tensor, Tensor, Dict[str, Tensor], Dict[str, float], float) -> Tuple[Tensor, Tensor]
-
-    # Compute per-env physical parameters
-    target_height = states["cubeB_size"] + states["cubeA_size"] / 2.0
-    cubeA_size = states["cubeA_size"]
-    cubeB_size = states["cubeB_size"]
-
-    # distance from hand to the cubeA
-    d = torch.norm(states["cubeA_pos_relative"], dim=-1)
-    d_lf = torch.norm(states["cubeA_pos"] - states["eef_lf_pos"], dim=-1)
-    d_rf = torch.norm(states["cubeA_pos"] - states["eef_rf_pos"], dim=-1)
-    dist_reward = 1 - torch.tanh(10.0 * (d + d_lf + d_rf) / 3)
-
-    # reward for lifting cubeA
-    cubeA_height = states["cubeA_pos"][:, 2] - reward_settings["table_height"]
-    cubeA_lifted = (cubeA_height - cubeA_size) > 0.04
-    lift_reward = cubeA_lifted
-
-    # how closely aligned cubeA is to cubeB (only provided if cubeA is lifted)
-    offset = torch.zeros_like(states["cubeA_to_cubeB_pos"])
-    offset[:, 2] = (cubeA_size + cubeB_size) / 2
-    d_ab = torch.norm(states["cubeA_to_cubeB_pos"] + offset, dim=-1)
-    align_reward = (1 - torch.tanh(10.0 * d_ab)) * cubeA_lifted
-
-    # Dist reward is maximum of dist and align reward
-    dist_reward = torch.max(dist_reward, align_reward)
-
-    # final reward for stacking successfully (only if cubeA is close to target height and corresponding location, and gripper is not grasping)
-    cubeA_align_cubeB = (torch.norm(states["cubeA_to_cubeB_pos"][:, :2], dim=-1) < 0.02)
-    cubeA_on_cubeB = torch.abs(cubeA_height - target_height) < 0.02
-    gripper_away_from_cubeA = (d > 0.04)
-    stack_reward = cubeA_align_cubeB & cubeA_on_cubeB & gripper_away_from_cubeA
-
-    # Compose rewards
-
-    # We either provide the stack reward or the align + dist reward
-    rewards = torch.where(
-        stack_reward,
-        reward_settings["r_stack_scale"] * stack_reward,
-        reward_settings["r_dist_scale"] * dist_reward + reward_settings["r_lift_scale"] * lift_reward + reward_settings[
-            "r_align_scale"] * align_reward,
-    )
-
-    # Compute resets
-    reset_buf = torch.where((progress_buf >= max_episode_length - 1) | (stack_reward > 0), torch.ones_like(reset_buf), reset_buf)
-
-    return rewards, reset_buf
+# Removed compute_franka_reward function - not needed for DNNE environments
