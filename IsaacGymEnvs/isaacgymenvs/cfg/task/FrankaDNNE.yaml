@@ -13,15 +13,20 @@ env:
   envSpacing: 1.5
   episodeLength: 1000  # Longer episodes for DNNE experimentation
   enableDebugVis: False
-  
-  # Available subtasks for this environment
-  subtask: random_target  # Options: random_target (more can be added)
 
   clipObservations: 5.0
   clipActions: 1.0
   
-  # Null action for initialization - OSC: 6 delta EEF + 1 gripper, joint_tor: 7 joints + 1 gripper
-  nullAction: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+  # DNNE-specific configuration
+  dnne:
+    defaultSubtask: random_target
+    
+    subtasks:
+      random_target:
+        numObservations: 23  # For joint control mode (7 joint positions + 7 velocities + 3 target pos + 3 EEF pos + 3 EEF-target delta)
+        numActions: 8        # 7 joints + 1 gripper
+        nullAction: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+        description: "Reach a randomly positioned target sphere"
 
   startPositionNoise: 0.25
   startRotationNoise: 0.785
@@ -69,3 +74,13 @@ sim:
 
 task:
   randomize: False
+
+# DNNE-specific configuration
+dnne:
+  defaultSubtask: random_target
+  subtasks:
+    random_target:
+      numObservations: 23
+      numActions: 8
+      nullAction: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+      description: "Reach a randomly positioned target sphere"
