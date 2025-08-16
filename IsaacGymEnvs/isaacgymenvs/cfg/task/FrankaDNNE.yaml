@@ -17,29 +17,100 @@ env:
   clipObservations: 5.0
   clipActions: 1.0
   
-  # DNNE-specific configuration
+  # DNNE-specific configuration with hierarchical schemas
   dnne:
-    defaultSubtask: random_target
+    # Define hierarchy levels for schema selection
+    schema_levels: ["subtask", "controlType"]
     
-    subtasks:
+    # Options for each level
+    subtask_options: ["random_target", "pick_place"]
+    controlType_options: ["osc", "joint_tor"]
+    
+    # Default selections (optional, for backward compatibility)
+    default_subtask: random_target
+    default_controlType: osc
+    
+    # Hierarchical schema definitions
+    nested_schemas:
       random_target:
-        numObservations: 23  # For joint control mode (7 joint positions + 7 velocities + 3 target pos + 3 EEF pos + 3 EEF-target delta)
-        numActions: 8        # 7 joints + 1 gripper
-        nullAction: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-        description: "Reach a randomly positioned target sphere"
+        osc:
+          numObservations: 23  # For OSC control mode
+          numActions: 8        # 7 joints + 1 gripper
+          nullAction: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+          description: "Reach target with operational space control"
+          
+          # Semantic schema for observation tensor elements
+          observationSchema:
+            joint_positions: [0, 7]      # 7 joint positions (indices 0-6)
+            joint_velocities: [7, 14]    # 7 joint velocities (indices 7-13)
+            target_position: [14, 17]    # 3D target position (indices 14-16)
+            eef_position: [17, 20]       # 3D end-effector position (indices 17-19)
+            eef_target_delta: [20, 23]   # 3D EEF-to-target delta (indices 20-22)
+          
+          # Semantic schema for action tensor elements
+          actionSchema:
+            eef_delta_pos: [0, 3]        # End-effector position delta (OSC)
+            eef_delta_orient: [3, 6]    # End-effector orientation delta (OSC)
+            gripper_width: [6, 7]        # Gripper width command
+            gripper_force: [7, 8]        # Gripper force command
         
-        # Semantic schema for observation tensor elements
-        observationSchema:
-          joint_positions: [0, 7]      # 7 joint positions (indices 0-6)
-          joint_velocities: [7, 14]    # 7 joint velocities (indices 7-13)
-          target_position: [14, 17]    # 3D target position (indices 14-16)
-          eef_position: [17, 20]       # 3D end-effector position (indices 17-19)
-          eef_target_delta: [20, 23]   # 3D EEF-to-target delta (indices 20-22)
+        joint_tor:
+          numObservations: 28  # For joint torque control mode
+          numActions: 7        # 7 joint torques
+          nullAction: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+          description: "Reach target with joint torque control"
+          
+          observationSchema:
+            joint_positions: [0, 7]      # 7 joint positions
+            joint_velocities: [7, 14]    # 7 joint velocities
+            joint_torques: [14, 21]      # 7 sensed joint torques
+            target_position: [21, 24]    # 3D target position
+            eef_position: [24, 27]       # 3D end-effector position
+            eef_target_delta: [27, 28]   # 1D distance to target
+          
+          actionSchema:
+            joint_torques: [0, 7]        # 7 joint torque commands
+      
+      pick_place:
+        osc:
+          numObservations: 30  # More observations for pick and place
+          numActions: 8
+          nullAction: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+          description: "Pick and place with operational space control"
+          
+          observationSchema:
+            joint_positions: [0, 7]
+            joint_velocities: [7, 14]
+            object_position: [14, 17]
+            object_orientation: [17, 21]  # Quaternion
+            target_position: [21, 24]
+            eef_position: [24, 27]
+            gripper_state: [27, 28]       # Open/closed
+            contact_forces: [28, 30]      # Simplified contact info
+          
+          actionSchema:
+            eef_delta_pos: [0, 3]
+            eef_delta_orient: [3, 6]
+            gripper_width: [6, 7]
+            gripper_force: [7, 8]
         
-        # Semantic schema for action tensor elements
-        actionSchema:
-          joint_commands: [0, 7]       # 7 joint torque/position commands (indices 0-6)
-          gripper_command: [7, 8]      # 1 gripper command (index 7)
+        joint_tor:
+          numObservations: 32
+          numActions: 7
+          nullAction: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+          description: "Pick and place with joint torque control"
+          
+          observationSchema:
+            joint_positions: [0, 7]
+            joint_velocities: [7, 14]
+            joint_torques: [14, 21]
+            object_position: [21, 24]
+            object_orientation: [24, 28]
+            target_position: [28, 31]
+            gripper_state: [31, 32]
+          
+          actionSchema:
+            joint_torques: [0, 7]
 
   startPositionNoise: 0.25
   startRotationNoise: 0.785
