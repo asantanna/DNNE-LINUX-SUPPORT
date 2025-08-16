@@ -27,6 +27,19 @@ env:
         numActions: 8        # 7 joints + 1 gripper
         nullAction: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
         description: "Reach a randomly positioned target sphere"
+        
+        # Semantic schema for observation tensor elements
+        observationSchema:
+          joint_positions: [0, 7]      # 7 joint positions (indices 0-6)
+          joint_velocities: [7, 14]    # 7 joint velocities (indices 7-13)
+          target_position: [14, 17]    # 3D target position (indices 14-16)
+          eef_position: [17, 20]       # 3D end-effector position (indices 17-19)
+          eef_target_delta: [20, 23]   # 3D EEF-to-target delta (indices 20-22)
+        
+        # Semantic schema for action tensor elements
+        actionSchema:
+          joint_commands: [0, 7]       # 7 joint torque/position commands (indices 0-6)
+          gripper_command: [7, 8]      # 1 gripper command (index 7)
 
   startPositionNoise: 0.25
   startRotationNoise: 0.785
@@ -75,12 +88,3 @@ sim:
 task:
   randomize: False
 
-# DNNE-specific configuration
-dnne:
-  defaultSubtask: random_target
-  subtasks:
-    random_target:
-      numObservations: 23
-      numActions: 8
-      nullAction: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-      description: "Reach a randomly positioned target sphere"
