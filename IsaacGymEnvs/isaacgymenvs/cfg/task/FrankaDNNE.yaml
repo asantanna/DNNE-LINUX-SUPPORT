@@ -41,32 +41,31 @@ env:
           
           # Semantic schema for observation tensor elements (INCLUSIVE ranges)
           observationSchema:
-            joint_positions: [0, 6]      # 7 joint positions (indices 0-6 inclusive)
-            joint_velocities: [7, 13]    # 7 joint velocities (indices 7-13 inclusive)
-            target_position: [14, 16]    # 3D target position (indices 14-16 inclusive)
-            eef_position: [17, 19]       # 3D end-effector position (indices 17-19 inclusive)
-            eef_target_delta: [20, 22]   # 3D EEF-to-target delta (indices 20-22 inclusive)
+            joint_theta: [0, 6]         # 7 joint positions
+            joint_dtheta: [7, 13]       # 7 joint velocities
+            target_xyz: [14, 16]        # 3D target position
+            eef_xyz: [17, 19]           # 3D end-effector position
+            eef_target_dist: [20, 22]   # 3D EEF-to-target delta
           
           # Semantic schema for action tensor elements (INCLUSIVE ranges)
           actionSchema:
-            eef_delta_pos: [0, 2]        # End-effector position delta (OSC) - indices 0-2 inclusive
-            eef_delta_orient: [3, 5]    # End-effector orientation delta (OSC) - indices 3-5 inclusive
-            gripper_width: [6, 6]        # Gripper width command - index 6
-            gripper_force: [7, 7]        # Gripper force command - index 7
+            eef_delta_xyz: [0, 2]       # End-effector position delta (OSC)
+            eef_delta_rpy: [3, 5]       # End-effector orientation delta (OSC)
+            gripper_width: 6            # Gripper width command
+            gripper_force: 7            # Gripper force command
         
         joint_tor:
-          numObservations: 28  # For joint torque control mode
-          numActions: 7        # 7 joint torques
+          numObservations: 28           # For joint torque control mode
+          numActions: 7                 # 7 joint torques
           nullAction: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
           description: "Reach target with joint torque control"
           
           observationSchema:
-            joint_positions: [0, 6]      # 7 joint positions (indices 0-6 inclusive)
-            joint_velocities: [7, 13]    # 7 joint velocities (indices 7-13 inclusive)
-            joint_torques: [14, 20]      # 7 sensed joint torques (indices 14-20 inclusive)
-            target_position: [21, 23]    # 3D target position (indices 21-23 inclusive)
-            eef_position: [24, 26]       # 3D end-effector position (indices 24-26 inclusive)
-            eef_target_delta: [27, 27]   # 1D distance to target (index 27)
+            joint_dtheta: [0, 6]         # 7 joint velocities
+            joint_torques: [14, 20]      # 7 sensed joint torques
+            target_xyz: [21, 23]         # 3D target position
+            eef_xyz: [24, 26]            # 3D end-effector position
+            eef_target_dist: [27, 27]    # 1D distance to target
           
           actionSchema:
             joint_torques: [0, 6]        # 7 joint torque commands (indices 0-6 inclusive)
@@ -79,21 +78,21 @@ env:
           description: "Pick and place with operational space control"
           
           observationSchema:
-            joint_positions: [0, 6]       # indices 0-6 inclusive
-            joint_velocities: [7, 13]     # indices 7-13 inclusive
-            object_position: [14, 16]     # indices 14-16 inclusive
-            object_orientation: [17, 20]  # Quaternion - indices 17-20 inclusive
-            target_position: [21, 23]     # indices 21-23 inclusive
-            eef_position: [24, 26]        # indices 24-26 inclusive
-            gripper_state: [27, 27]       # Open/closed - index 27
-            contact_forces: [28, 29]      # Simplified contact info - indices 28-29 inclusive
+            joint_theta: [0, 6]
+            joint_dtheta: [7, 13]
+            object_xyz: [14, 16]
+            object_rpy: [17, 20]
+            target_xyz: [21, 23]
+            eef_xyz: [24, 26]
+            gripper_state: [27, 27]
+            contact_forces: [28, 29]
           
           actionSchema:
-            eef_delta_pos: [0, 2]         # indices 0-2 inclusive
-            eef_delta_orient: [3, 5]      # indices 3-5 inclusive
-            gripper_width: [6, 6]         # index 6
-            gripper_force: [7, 7]         # index 7
-        
+            eef_delta_xyz: [0, 2]
+            eef_delta_rpy: [3, 5]
+            gripper_width: [6, 6]
+            gripper_force: [7, 7]
+
         joint_tor:
           numObservations: 32
           numActions: 7
@@ -101,16 +100,16 @@ env:
           description: "Pick and place with joint torque control"
           
           observationSchema:
-            joint_positions: [0, 6]       # indices 0-6 inclusive
-            joint_velocities: [7, 13]     # indices 7-13 inclusive
-            joint_torques: [14, 20]       # indices 14-20 inclusive
-            object_position: [21, 23]     # indices 21-23 inclusive
-            object_orientation: [24, 27]  # Quaternion - indices 24-27 inclusive
-            target_position: [28, 30]     # indices 28-30 inclusive
-            gripper_state: [31, 31]       # index 31
+            joint_theta: [0, 6]
+            joint_dtheta: [7, 13]
+            joint_torques: [14, 20]
+            object_xyz: [21, 23]
+            object_rpy: [24, 27]
+            target_xyz: [28, 30]
+            gripper_state: [31, 31]
           
           actionSchema:
-            joint_torques: [0, 6]         # indices 0-6 inclusive
+            joint_torques: [0, 6]
 
   startPositionNoise: 0.25
   startRotationNoise: 0.785
@@ -126,7 +125,7 @@ env:
   alignRewardScale: 2.0
   stackRewardScale: 16.0
 
-  controlType: osc  # options are {joint_tor, osc}
+  controlType: osc      # options are {joint_tor, osc}
 
   asset:
     assetRoot: "../../assets"
@@ -144,7 +143,7 @@ sim:
   physx:
     num_threads: ${....num_threads}
     solver_type: ${....solver_type}
-    use_gpu: ${contains:"cuda",${....sim_device}} # set to False to run on CPU
+    use_gpu: ${contains:"cuda",${....sim_device}}   # set to False to run on CPU
     num_position_iterations: 8
     num_velocity_iterations: 1
     contact_offset: 0.005
@@ -152,9 +151,11 @@ sim:
     bounce_threshold_velocity: 0.2
     max_depenetration_velocity: 1000.0
     default_buffer_size_multiplier: 5.0
-    max_gpu_contact_pairs: 1048576 # 1024*1024
+    max_gpu_contact_pairs: 1048576    # 1024*1024
     num_subscenes: ${....num_subscenes}
-    contact_collection: 0 # 0: CC_NEVER (don't collect contact info), 1: CC_LAST_SUBSTEP (collect only contacts on last substep), 2: CC_ALL_SUBSTEPS (broken - do not use!)
+    contact_collection: 0   # 0: CC_NEVER (don't collect contact info)
+                            # 1: CC_LAST_SUBSTEP (collect only contacts on last substep)
+                            # 2: CC_ALL_SUBSTEPS (broken - do not use!)
 
 task:
   randomize: False
