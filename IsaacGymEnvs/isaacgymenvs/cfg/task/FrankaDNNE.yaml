@@ -39,20 +39,20 @@ env:
           nullAction: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
           description: "Reach target with operational space control"
           
-          # Semantic schema for observation tensor elements
+          # Semantic schema for observation tensor elements (INCLUSIVE ranges)
           observationSchema:
-            joint_positions: [0, 7]      # 7 joint positions (indices 0-6)
-            joint_velocities: [7, 14]    # 7 joint velocities (indices 7-13)
-            target_position: [14, 17]    # 3D target position (indices 14-16)
-            eef_position: [17, 20]       # 3D end-effector position (indices 17-19)
-            eef_target_delta: [20, 23]   # 3D EEF-to-target delta (indices 20-22)
+            joint_positions: [0, 6]      # 7 joint positions (indices 0-6 inclusive)
+            joint_velocities: [7, 13]    # 7 joint velocities (indices 7-13 inclusive)
+            target_position: [14, 16]    # 3D target position (indices 14-16 inclusive)
+            eef_position: [17, 19]       # 3D end-effector position (indices 17-19 inclusive)
+            eef_target_delta: [20, 22]   # 3D EEF-to-target delta (indices 20-22 inclusive)
           
-          # Semantic schema for action tensor elements
+          # Semantic schema for action tensor elements (INCLUSIVE ranges)
           actionSchema:
-            eef_delta_pos: [0, 3]        # End-effector position delta (OSC)
-            eef_delta_orient: [3, 6]    # End-effector orientation delta (OSC)
-            gripper_width: [6, 7]        # Gripper width command
-            gripper_force: [7, 8]        # Gripper force command
+            eef_delta_pos: [0, 2]        # End-effector position delta (OSC) - indices 0-2 inclusive
+            eef_delta_orient: [3, 5]    # End-effector orientation delta (OSC) - indices 3-5 inclusive
+            gripper_width: [6, 6]        # Gripper width command - index 6
+            gripper_force: [7, 7]        # Gripper force command - index 7
         
         joint_tor:
           numObservations: 28  # For joint torque control mode
@@ -61,15 +61,15 @@ env:
           description: "Reach target with joint torque control"
           
           observationSchema:
-            joint_positions: [0, 7]      # 7 joint positions
-            joint_velocities: [7, 14]    # 7 joint velocities
-            joint_torques: [14, 21]      # 7 sensed joint torques
-            target_position: [21, 24]    # 3D target position
-            eef_position: [24, 27]       # 3D end-effector position
-            eef_target_delta: [27, 28]   # 1D distance to target
+            joint_positions: [0, 6]      # 7 joint positions (indices 0-6 inclusive)
+            joint_velocities: [7, 13]    # 7 joint velocities (indices 7-13 inclusive)
+            joint_torques: [14, 20]      # 7 sensed joint torques (indices 14-20 inclusive)
+            target_position: [21, 23]    # 3D target position (indices 21-23 inclusive)
+            eef_position: [24, 26]       # 3D end-effector position (indices 24-26 inclusive)
+            eef_target_delta: [27, 27]   # 1D distance to target (index 27)
           
           actionSchema:
-            joint_torques: [0, 7]        # 7 joint torque commands
+            joint_torques: [0, 6]        # 7 joint torque commands (indices 0-6 inclusive)
       
       pick_place:
         osc:
@@ -79,20 +79,20 @@ env:
           description: "Pick and place with operational space control"
           
           observationSchema:
-            joint_positions: [0, 7]
-            joint_velocities: [7, 14]
-            object_position: [14, 17]
-            object_orientation: [17, 21]  # Quaternion
-            target_position: [21, 24]
-            eef_position: [24, 27]
-            gripper_state: [27, 28]       # Open/closed
-            contact_forces: [28, 30]      # Simplified contact info
+            joint_positions: [0, 6]       # indices 0-6 inclusive
+            joint_velocities: [7, 13]     # indices 7-13 inclusive
+            object_position: [14, 16]     # indices 14-16 inclusive
+            object_orientation: [17, 20]  # Quaternion - indices 17-20 inclusive
+            target_position: [21, 23]     # indices 21-23 inclusive
+            eef_position: [24, 26]        # indices 24-26 inclusive
+            gripper_state: [27, 27]       # Open/closed - index 27
+            contact_forces: [28, 29]      # Simplified contact info - indices 28-29 inclusive
           
           actionSchema:
-            eef_delta_pos: [0, 3]
-            eef_delta_orient: [3, 6]
-            gripper_width: [6, 7]
-            gripper_force: [7, 8]
+            eef_delta_pos: [0, 2]         # indices 0-2 inclusive
+            eef_delta_orient: [3, 5]      # indices 3-5 inclusive
+            gripper_width: [6, 6]         # index 6
+            gripper_force: [7, 7]         # index 7
         
         joint_tor:
           numObservations: 32
@@ -101,16 +101,16 @@ env:
           description: "Pick and place with joint torque control"
           
           observationSchema:
-            joint_positions: [0, 7]
-            joint_velocities: [7, 14]
-            joint_torques: [14, 21]
-            object_position: [21, 24]
-            object_orientation: [24, 28]
-            target_position: [28, 31]
-            gripper_state: [31, 32]
+            joint_positions: [0, 6]       # indices 0-6 inclusive
+            joint_velocities: [7, 13]     # indices 7-13 inclusive
+            joint_torques: [14, 20]       # indices 14-20 inclusive
+            object_position: [21, 23]     # indices 21-23 inclusive
+            object_orientation: [24, 27]  # Quaternion - indices 24-27 inclusive
+            target_position: [28, 30]     # indices 28-30 inclusive
+            gripper_state: [31, 31]       # index 31
           
           actionSchema:
-            joint_torques: [0, 7]
+            joint_torques: [0, 6]         # indices 0-6 inclusive
 
   startPositionNoise: 0.25
   startRotationNoise: 0.785
