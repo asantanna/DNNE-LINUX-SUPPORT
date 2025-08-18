@@ -34,18 +34,18 @@ env:
     nested_schemas:
       random_target:
         osc:
-          numObservations: 23  # For OSC control mode
+          numObservations: 13  # Actual: target(3) + eef_pos(3) + eef_quat(4) + gripper(2) + time(1)
           numActions: 8        # 7 joints + 1 gripper
           nullAction: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
           description: "Reach target with operational space control"
           
-          # Semantic schema for observation tensor elements (INCLUSIVE ranges)
+          # Schema reflects actual franka_dnne.py implementation
           observationSchema:
-            joint_theta: [0, 6]         # 7 joint positions
-            joint_dtheta: [7, 13]       # 7 joint velocities
-            target_xyz: [14, 16]        # 3D target position
-            eef_xyz: [17, 19]           # 3D end-effector position
-            eef_target_dist: [20, 22]   # 3D EEF-to-target delta
+            target_pos: [0, 2]          # Target position (x,y,z)
+            eef_pos: [3, 5]             # End-effector position (x,y,z)
+            eef_quat: [6, 9]            # End-effector quaternion (x,y,z,w)
+            gripper_theta: [10, 11]     # 2 gripper joint angles in radians
+            episode_time: 12            # Episode elapsed time in seconds
           
           # Semantic schema for action tensor elements (INCLUSIVE ranges)
           actionSchema:
@@ -55,17 +55,18 @@ env:
             gripper_force: 7            # Gripper force command
         
         joint_tor:
-          numObservations: 28           # For joint torque control mode
+          numObservations: 18           # Actual: target(3) + eef_pos(3) + eef_quat(4) + joints(7) + time(1)
           numActions: 7                 # 7 joint torques
           nullAction: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
           description: "Reach target with joint torque control"
           
+          # Schema reflects actual franka_dnne.py implementation
           observationSchema:
-            joint_dtheta: [0, 6]         # 7 joint velocities
-            joint_torques: [14, 20]      # 7 sensed joint torques
-            target_xyz: [21, 23]         # 3D target position
-            eef_xyz: [24, 26]            # 3D end-effector position
-            eef_target_dist: [27, 27]    # 1D distance to target
+            target_pos: [0, 2]           # Target position (x,y,z)
+            eef_pos: [3, 5]              # End-effector position (x,y,z)  
+            eef_quat: [6, 9]             # End-effector quaternion (x,y,z,w)
+            joint_theta: [10, 16]        # 7 joint angles in radians
+            episode_time: 17            # Episode elapsed time in seconds
           
           actionSchema:
             joint_torques: [0, 6]        # 7 joint torque commands (indices 0-6 inclusive)
@@ -84,14 +85,14 @@ env:
             object_rpy: [17, 20]
             target_xyz: [21, 23]
             eef_xyz: [24, 26]
-            gripper_state: [27, 27]
+            gripper_state: 27
             contact_forces: [28, 29]
           
           actionSchema:
             eef_delta_xyz: [0, 2]
             eef_delta_rpy: [3, 5]
-            gripper_width: [6, 6]
-            gripper_force: [7, 7]
+            gripper_width: 6
+            gripper_force: 7
 
         joint_tor:
           numObservations: 32
@@ -106,7 +107,7 @@ env:
             object_xyz: [21, 23]
             object_rpy: [24, 27]
             target_xyz: [28, 30]
-            gripper_state: [31, 31]
+            gripper_state: 31
           
           actionSchema:
             joint_torques: [0, 6]
