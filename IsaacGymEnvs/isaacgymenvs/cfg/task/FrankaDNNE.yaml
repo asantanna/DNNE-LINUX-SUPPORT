@@ -35,8 +35,8 @@ env:
       random_target:
         osc:
           numObservations: 13  # Actual: target(3) + eef_pos(3) + eef_quat(4) + gripper(2) + time(1)
-          numActions: 8        # 7 joints + 1 gripper
-          nullAction: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+          numActions: 7        # OSC: 3 pos + 3 rot + 1 gripper
+          nullAction: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
           description: "Reach target with operational space control"
           
           # Schema reflects actual franka_dnne.py implementation
@@ -74,8 +74,8 @@ env:
       pick_place:
         osc:
           numObservations: 30  # More observations for pick and place
-          numActions: 8
-          nullAction: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+          numActions: 7
+          nullAction: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
           description: "Pick and place with operational space control"
           
           observationSchema:

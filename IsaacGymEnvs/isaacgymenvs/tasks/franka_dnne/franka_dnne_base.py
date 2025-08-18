@@ -396,13 +396,14 @@ class Franka_DNNE_Base(VecTask):
         _massmatrix = self.gym.acquire_mass_matrix_tensor(self.sim, "franka")
         mm = gymtorch.wrap_tensor(_massmatrix)
         self._mm = mm[:, :7, :7]
-        self._cubeA_state = self._root_state[:, self._cubeA_id, :]
-        self._cubeB_state = self._root_state[:, self._cubeB_id, :]
+        # DNNE: No cube states needed
+        # self._cubeA_state = self._root_state[:, self._cubeA_id, :]
+        # self._cubeB_state = self._root_state[:, self._cubeB_id, :]
 
-        # Initialize states
+        # Initialize states (no cube sizes for DNNE)
         self.states.update({
-            "cubeA_size": torch.ones_like(self._eef_state[:, 0]) * self.cubeA_size,
-            "cubeB_size": torch.ones_like(self._eef_state[:, 0]) * self.cubeB_size,
+            # "cubeA_size": torch.ones_like(self._eef_state[:, 0]) * self.cubeA_size,
+            # "cubeB_size": torch.ones_like(self._eef_state[:, 0]) * self.cubeB_size,
         })
 
         # Initialize actions
@@ -418,6 +419,11 @@ class Franka_DNNE_Base(VecTask):
                                            device=self.device).view(self.num_envs, -1)
 
     def _update_states(self):
+        # Skip if tensors aren't initialized yet
+        if self._q is None:
+            return
+            
+        # Update Franka states only - no cubes in DNNE
         self.states.update({
             # Franka
             "q": self._q[:, :],
@@ -427,13 +433,6 @@ class Franka_DNNE_Base(VecTask):
             "eef_vel": self._eef_state[:, 7:],
             "eef_lf_pos": self._eef_lf_state[:, :3],
             "eef_rf_pos": self._eef_rf_state[:, :3],
-            # Cubes
-            "cubeA_quat": self._cubeA_state[:, 3:7],
-            "cubeA_pos": self._cubeA_state[:, :3],
-            "cubeA_pos_relative": self._cubeA_state[:, :3] - self._eef_state[:, :3],
-            "cubeB_quat": self._cubeB_state[:, 3:7],
-            "cubeB_pos": self._cubeB_state[:, :3],
-            "cubeA_to_cubeB_pos": self._cubeB_state[:, :3] - self._cubeA_state[:, :3],
         })
 
     def _refresh(self):
@@ -493,15 +492,16 @@ class Franka_DNNE_Base(VecTask):
     def reset_idx(self, env_ids):
         env_ids_int32 = env_ids.to(dtype=torch.int32)
 
-        # Reset cubes, sampling cube B first, then A
-        # if not self._i:
-        self._reset_init_cube_state(cube='B', env_ids=env_ids, check_valid=False)
-        self._reset_init_cube_state(cube='A', env_ids=env_ids, check_valid=True)
-        # self._i = True
+        # DNNE: No cube reset needed
+        # # Reset cubes, sampling cube B first, then A
+        # # if not self._i:
+        # self._reset_init_cube_state(cube='B', env_ids=env_ids, check_valid=False)
+        # self._reset_init_cube_state(cube='A', env_ids=env_ids, check_valid=True)
+        # # self._i = True
 
-        # Write these new init states to the sim states
-        self._cubeA_state[env_ids] = self._init_cubeA_state[env_ids]
-        self._cubeB_state[env_ids] = self._init_cubeB_state[env_ids]
+        # # Write these new init states to the sim states
+        # self._cubeA_state[env_ids] = self._init_cubeA_state[env_ids]
+        # self._cubeB_state[env_ids] = self._init_cubeB_state[env_ids]
 
         # Reset agent
         reset_noise = torch.rand((len(env_ids), 9), device=self.device)
@@ -639,6 +639,12 @@ class Franka_DNNE_Base(VecTask):
     def _compute_osc_torques(self, dpose):
         # Solve for Operational Space Control # Paper: khatib.stanford.edu/publications/pdfs/Khatib_1987_RA.pdf
         # Helpful resource: studywolf.wordpress.com/2013/09/17/robot-control-4-operation-space-control/
+        
+        # Check if tensors are initialized
+        if self._q is None or self._qd is None:
+            # Return zeros if not initialized yet  
+            return torch.zeros((self.num_envs, 7), device=self.device)
+            
         q, qd = self._q[:, :7], self._qd[:, :7]
         mm_inv = torch.inverse(self._mm)
         m_eef_inv = self._j_eef @ mm_inv @ torch.transpose(self._j_eef, 1, 2)
@@ -666,6 +672,11 @@ class Franka_DNNE_Base(VecTask):
 
     def pre_physics_step(self, actions):
         self.actions = actions.clone().to(self.device)
+        
+        # Check if control tensors are initialized
+        if self._arm_control is None or self._gripper_control is None:
+            # Skip if not initialized yet
+            return
 
         # Split arm and gripper command
         u_arm, u_gripper = self.actions[:, :-1], self.actions[:, -1]

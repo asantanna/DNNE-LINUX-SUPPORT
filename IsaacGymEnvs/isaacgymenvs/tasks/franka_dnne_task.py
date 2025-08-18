@@ -63,7 +63,8 @@ class Franka_DNNE_RandomTarget(Franka_DNNE_Base):
         sphere_opts.density = 0.001  # Very light so it doesn't affect physics much
         sphere_opts.disable_gravity = True  # Float in place
         sphere_opts.fix_base_link = True  # Fixed position until we move it
-        target_asset = self.gym.create_sphere(self.sim, self.target_radius, sphere_opts)
+        target_radius = 0.05  # Default target radius
+        target_asset = self.gym.create_sphere(self.sim, target_radius, sphere_opts)
 
         franka_dof_stiffness = to_torch([0, 0, 0, 0, 0, 0, 0, 5000., 5000.], dtype=torch.float, device=self.device)
         franka_dof_damping = to_torch([0, 0, 0, 0, 0, 0, 0, 1.0e2, 1.0e2], dtype=torch.float, device=self.device)
@@ -157,6 +158,12 @@ class Franka_DNNE_RandomTarget(Franka_DNNE_Base):
         
     def compute_observations(self):
         """Compute observations including target position and episode time."""
+        # Check if target state is initialized
+        if not hasattr(self, '_target_state') or self._target_state is None:
+            # Return zeros if not initialized yet
+            self.obs_buf = torch.zeros((self.num_envs, self.num_obs), device=self.device)
+            return self.obs_buf
+            
         self._refresh()
         
         # Calculate episode elapsed time in seconds
@@ -180,16 +187,49 @@ class Franka_DNNE_RandomTarget(Franka_DNNE_Base):
         
         return self.obs_buf
         
+    def _reset_franka_arm(self, env_ids):
+        """Reset just the franka arm position without cubes"""
+        # Check if we're being called during initialization (before tensors exist)
+        if not hasattr(self, '_dof_state') or self._dof_state is None:
+            return
+            
+        # print(f"[DEBUG _reset_franka_arm] Resetting franka arm for env_ids={env_ids}")
+        
+        # The base class stores DOF state in self._dof_state tensor
+        # For single environment, franka is the only actor with DOFs
+        
+        # Reset to default joint positions
+        default_pos = torch.tensor([0.0, -0.785, 0.0, -2.356, 0.0, 1.571, 0.785, 0.04, 0.04], 
+                                  device=self.device)
+        
+        # Apply position to DOF state (pos is index 0, vel is index 1)
+        self._dof_state[env_ids, :, 0] = default_pos
+        self._dof_state[env_ids, :, 1] = 0  # Zero velocity
+        
+        # Apply the reset to simulation
+        self.gym.set_dof_state_tensor_indexed(
+            self.sim,
+            gymtorch.unwrap_tensor(self._dof_state),
+            gymtorch.unwrap_tensor(env_ids.to(torch.int32)),
+            len(env_ids)
+        )
+
     def reset_idx(self, env_ids):
         """Reset specified environments with randomized target positions."""
+        # Check if we're being called during initialization (before tensors exist)
+        if not hasattr(self, '_root_state') or self._root_state is None:
+            return
+            
         env_ids_int32 = env_ids.to(dtype=torch.int32)
         
         # Since DNNE uses single environment, we expect env_ids to be [0]
         if len(env_ids) != 1 or env_ids[0] != 0:
             raise ValueError(f"DNNE reset expects single environment, got env_ids={env_ids}")
         
-        # Reset franka to default position (call parent's reset)
-        super().reset_idx(env_ids)
+        # Reset franka to default position WITHOUT cubes
+        # Don't call super().reset_idx() as it tries to reset cubes we don't have
+        # Instead, just reset the franka arm state directly
+        self._reset_franka_arm(env_ids)
         
         # Randomize target position for the single environment
         target_pos = torch.zeros((1, 3), device=self.device)
