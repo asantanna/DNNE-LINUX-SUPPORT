@@ -32,8 +32,11 @@ class Franka_DNNE_RandomTarget(Franka_DNNE_Base):
         
         # Target sphere properties
         self.target_radius = 0.03  # 3cm radius sphere
-        self.target_height_range = [0.1, 0.5]  # Height range for target placement
-        self.target_xy_range = 0.3  # Max distance from origin in x,y plane
+        # Spherical shell parameters for target placement
+        # Robot is at (-0.45, 0.0, ~1.0), so place shell in front of it
+        self.shell_center = [0.0, 0.0, 1.3]  # Center at table height + 0.3m
+        self.shell_inner_radius = 0.3  # Inner radius (excludes collision zone)
+        self.shell_outer_radius = 0.6  # Outer radius (within robot reach)
         
     def _create_envs(self, num_envs, spacing, num_per_row):
         """Override to create sphere target instead of cubes."""
@@ -103,13 +106,16 @@ class Franka_DNNE_RandomTarget(Franka_DNNE_Base):
             if self.aggregate_mode >= 2:
                 self.gym.begin_aggregate(env_ptr, max_agg_bodies, max_agg_shapes, True)
             
-            # Create franka actor
-            franka_actor = self.gym.create_actor(env_ptr, franka_asset, gymapi.Transform(), "franka", i, 1, 0)
+            # Create franka actor at proper position
+            franka_start_pose = gymapi.Transform()
+            franka_start_pose.p = gymapi.Vec3(-0.45, 0.0, 1.0)  # Standard Franka position
+            franka_start_pose.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0)
+            franka_actor = self.gym.create_actor(env_ptr, franka_asset, franka_start_pose, "franka", i, 1, 0)
             self.gym.set_actor_dof_properties(env_ptr, franka_actor, franka_dof_props)
                 
-            # Create target sphere actor
+            # Create target sphere actor (initial position, will be randomized on reset)
             target_pose = gymapi.Transform()
-            target_pose.p = gymapi.Vec3(0.0, 0.0, 0.3)  # Initial position
+            target_pose.p = gymapi.Vec3(0.0, 0.0, 1.3)  # Initial position at shell center
             target_actor = self.gym.create_actor(env_ptr, target_asset, target_pose, "target", i, 0, 0)
             
             # Set target color to red for visibility
@@ -231,13 +237,26 @@ class Franka_DNNE_RandomTarget(Franka_DNNE_Base):
         # Instead, just reset the franka arm state directly
         self._reset_franka_arm(env_ids)
         
-        # Randomize target position for the single environment
+        # Randomize target position in upper hemispheric shell
         target_pos = torch.zeros((1, 3), device=self.device)
-        target_pos[0, 0] = (torch.rand(1, device=self.device) * 2 - 1) * self.target_xy_range
-        target_pos[0, 1] = (torch.rand(1, device=self.device) * 2 - 1) * self.target_xy_range
-        target_pos[0, 2] = torch.rand(1, device=self.device) * \
-                          (self.target_height_range[1] - self.target_height_range[0]) + \
-                          self.target_height_range[0]
+        
+        # Sample random point in upper hemispheric shell
+        # 1. Sample radius between inner and outer
+        r = torch.rand(1, device=self.device) * (self.shell_outer_radius - self.shell_inner_radius) + self.shell_inner_radius
+        
+        # 2. Sample angles for spherical coordinates
+        theta = torch.rand(1, device=self.device) * 2 * np.pi  # Azimuth [0, 2π]
+        phi = torch.acos(1 - torch.rand(1, device=self.device))  # Elevation [0, π/2] for upper hemisphere
+        
+        # 3. Convert to Cartesian coordinates and add to shell center
+        target_pos[0, 0] = self.shell_center[0] + r * torch.sin(phi) * torch.cos(theta)
+        target_pos[0, 1] = self.shell_center[1] + r * torch.sin(phi) * torch.sin(theta)
+        target_pos[0, 2] = self.shell_center[2] + r * torch.cos(phi)
+        
+        # Debug output
+        print(f"[DEBUG] Target reset: r={r.item():.3f}, theta={theta.item():.3f}, phi={phi.item():.3f}")
+        print(f"[DEBUG] Target position: ({target_pos[0, 0]:.3f}, {target_pos[0, 1]:.3f}, {target_pos[0, 2]:.3f})")
+        print(f"[DEBUG] Shell center: {self.shell_center}, inner_r={self.shell_inner_radius}, outer_r={self.shell_outer_radius}")
         
         # Update target state for single environment
         self._target_state[0, :3] = target_pos[0]
@@ -258,6 +277,56 @@ class Franka_DNNE_RandomTarget(Franka_DNNE_Base):
         # Reset progress buffer for single environment
         self.progress_buf[0] = 0
         self.reset_buf[0] = 0
+    
+    def reset(self):
+        """Override reset to actually reset the environment when called externally."""
+        # Set reset_buf to trigger reset
+        self.reset_buf[0] = 1
+        # Call reset_idx to actually reset
+        self.reset_idx(torch.tensor([0], device=self.device))
+        # Return observations
+        return super().reset()
+    
+    def _check_target_contact(self):
+        """Check if end-effector is touching the target sphere."""
+        if not hasattr(self, '_eef_state') or self._eef_state is None:
+            return False
+            
+        # Calculate distance between end-effector and target
+        eef_pos = self._eef_state[0, :3]
+        target_pos = self._target_state[0, :3]
+        distance = torch.norm(eef_pos - target_pos)
+        
+        # Check if within contact distance (sum of radii plus small margin)
+        # End-effector radius ~0.05m, target radius 0.03m, add 0.02m margin
+        contact_threshold = 0.10  # 10cm threshold for "touching"
+        return distance < contact_threshold
+    
+    def post_physics_step(self):
+        """Override to check termination and signal done to DNNE."""
+        # Increment progress buffer
+        self.progress_buf += 1
+        
+        # Compute observations
+        self.compute_observations()
+        
+        # Check for termination conditions:
+        # 1. Target touched
+        # 2. Episode timeout (10 seconds = 600 steps)
+        if self._check_target_contact():
+            print(f"Target touched at step {self.progress_buf[0]}")
+            self.reset_buf[0] = 1  # Signal done to DNNE
+        elif self.progress_buf[0] >= self.max_episode_length:
+            print(f"Episode timeout at {self.progress_buf[0] * self.dt:.2f} seconds")
+            self.reset_buf[0] = 1  # Signal done to DNNE
+        else:
+            # Don't override reset_buf if it was set externally
+            # This allows DNNE to trigger resets via the reset input
+            pass
+        
+        # Debug visualization if enabled
+        if hasattr(self, '_debug_viz'):
+            self._debug_viz()
         
 
 def resolve_franka_dnne(cfg, *args, **kwargs):
