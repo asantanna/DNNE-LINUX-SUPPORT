@@ -435,9 +435,22 @@ class FrankaDNNE(VecTask):
 
     def compute_reward(self, actions):
         # DNNE doesn't use rewards - handled externally
-        # Just check for episode timeout
+        # Check for target reached (gripper close to target)
+        target_distance = torch.norm(self.states["target_to_eef"], dim=-1)
+        target_reached = target_distance < 0.1  # Within 10cm of target
+        
+        # Debug output when target is reached
+        if target_reached.any() and not hasattr(self, '_last_target_reached'):
+            self._last_target_reached = False
+        if target_reached.any() and not self._last_target_reached:
+            print(f"[DNNE] Target reached! Distance: {target_distance[0]:.3f}m")
+            self._last_target_reached = True
+        elif not target_reached.any():
+            self._last_target_reached = False
+        
+        # Set reset for timeout OR target reached
         self.reset_buf = torch.where(
-            self.progress_buf >= self.max_episode_length - 1,
+            (self.progress_buf >= self.max_episode_length - 1) | target_reached,
             torch.ones_like(self.reset_buf),
             self.reset_buf
         )
@@ -620,12 +633,26 @@ class FrankaDNNE(VecTask):
         self.gym.set_dof_position_target_tensor(self.sim, gymtorch.unwrap_tensor(self._pos_control))
         self.gym.set_dof_actuation_force_tensor(self.sim, gymtorch.unwrap_tensor(self._effort_control))
 
+    def reset(self):
+        """DNNE: Manual reset for all environments"""
+        # Reset all environments
+        env_ids = torch.arange(self.num_envs, device=self.device)
+        self.reset_idx(env_ids)
+        
+        # Don't compute observations - they're meaningless after reset
+        # The next step will provide proper observations
+        
+        # Return empty dict (observations will come from next step)
+        return {"obs": torch.zeros_like(self.obs_buf)}
+
     def post_physics_step(self):
         self.progress_buf += 1
 
-        env_ids = self.reset_buf.nonzero(as_tuple=False).squeeze(-1)
-        if len(env_ids) > 0:
-            self.reset_idx(env_ids)
+        # DNNE: Auto-reset disabled - environment will be reset manually via trigger
+        # or by IsaacGymSim node when reset_when_done=True
+        # env_ids = self.reset_buf.nonzero(as_tuple=False).squeeze(-1)
+        # if len(env_ids) > 0:
+        #     self.reset_idx(env_ids)
 
         self.compute_observations()
         self.compute_reward(self.actions)
