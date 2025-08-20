@@ -60,6 +60,12 @@ def make(
                 else:
                     cfg_dict['sim'][key] = value
         
+        # Override env configuration if specified
+        if 'env' in dnne_cfg:
+            for key, value in dnne_cfg['env'].items():
+                cfg_dict['env'][key] = value
+                print(f"[DEBUG make] Applied dnne_cfg.env.{key} = {value}")
+        
         # Users can add other overrides to dnne_cfg as needed
 
     create_rlgpu_env = get_rlgames_env_creator(

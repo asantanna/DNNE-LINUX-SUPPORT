@@ -33,7 +33,7 @@ import torch
 from isaacgym import gymtorch
 from isaacgym import gymapi
 
-from isaacgymenvs.utils.torch_jit_utils import quat_mul, quat_apply, to_torch, tensor_clamp  
+from isaacgymenvs.utils.torch_jit_utils import quat_mul, to_torch, tensor_clamp  
 from isaacgymenvs.tasks.base.vec_task import VecTask
 
 
@@ -72,7 +72,7 @@ def axisangle2quat(vec, eps=1e-6):
     return quat
 
 
-class Franka_DNNE_Base(VecTask):
+class FrankaDNNE(VecTask):
 
     def __init__(self, cfg, rl_device, sim_device, graphics_device_id, headless, virtual_screen_capture, force_render):
         self.cfg = cfg
@@ -104,23 +104,18 @@ class Franka_DNNE_Base(VecTask):
         assert self.control_type in {"osc", "joint_tor"},\
             "Invalid control type specified. Must be one of: {osc, joint_tor}"
 
-        # dimensions
-        # obs include: cubeA_pose (7) + cubeB_pos (3) + eef_pose (7) + q_gripper (2)
-        self.cfg["env"]["numObservations"] = 19 if self.control_type == "osc" else 26
-        # actions include: delta EEF if OSC (6) or joint torques (7) + bool gripper (1)
-        self.cfg["env"]["numActions"] = 7 if self.control_type == "osc" else 8
+        # dimensions - trust values from YAML/dnne_cfg
+        # DNNE passes the correct observation/action sizes via configuration
+        # Don't hardcode these values
 
         # Values to be filled in at runtime
         self.states = {}                        # will be dict filled with relevant states to use for reward calculation
         self.handles = {}                       # will be dict mapping names to relevant sim handles
         self.num_dofs = None                    # Total number of DOFs per env
         self.actions = None                     # Current actions to be deployed
-        self._init_cubeA_state = None           # Initial state of cubeA for the current env
-        self._init_cubeB_state = None           # Initial state of cubeB for the current env
-        self._cubeA_state = None                # Current state of cubeA for the current env
-        self._cubeB_state = None                # Current state of cubeB for the current env
-        self._cubeA_id = None                   # Actor ID corresponding to cubeA for a given env
-        self._cubeB_id = None                   # Actor ID corresponding to cubeB for a given env
+        self._init_target_state = None          # Initial state of target for the current env
+        self._target_state = None                # Current state of target for the current env
+        self._target_id = None                   # Actor ID corresponding to target for a given env
 
         # Tensor placeholders
         self._root_state = None             # State of root body        (n_envs, 13)
@@ -160,9 +155,13 @@ class Franka_DNNE_Base(VecTask):
         self.kd_null = 2 * torch.sqrt(self.kp_null)
         #self.cmd_limit = None                   # filled in later
 
-        # Set control limits
-        self.cmd_limit = to_torch([0.1, 0.1, 0.1, 0.5, 0.5, 0.5], device=self.device).unsqueeze(0) if \
-        self.control_type == "osc" else self._franka_effort_limits[:7].unsqueeze(0)
+        # Set control limits - will be properly initialized after _franka_effort_limits is populated
+        if self.control_type == "osc":
+            self.cmd_limit = to_torch([0.1, 0.1, 0.1, 0.5, 0.5, 0.5], device=self.device).unsqueeze(0)
+        else:
+            # For joint_tor, use small limits to prevent unstable behavior with untrained networks
+            # These are much smaller than actual robot limits but safe for training
+            self.cmd_limit = to_torch([1.0, 1.0, 1.0, 1.0, 0.5, 0.5, 0.5], device=self.device).unsqueeze(0)
 
         # Reset all environments
         self.reset_idx(torch.arange(self.num_envs, device=self.device))
@@ -224,18 +223,14 @@ class Franka_DNNE_Base(VecTask):
         table_stand_opts.fix_base_link = True
         table_stand_asset = self.gym.create_box(self.sim, *[0.2, 0.2, table_stand_height], table_opts)
 
-        self.cubeA_size = 0.050
-        self.cubeB_size = 0.070
-
-        # Create cubeA asset
-        cubeA_opts = gymapi.AssetOptions()
-        cubeA_asset = self.gym.create_box(self.sim, *([self.cubeA_size] * 3), cubeA_opts)
-        cubeA_color = gymapi.Vec3(0.6, 0.1, 0.0)
-
-        # Create cubeB asset
-        cubeB_opts = gymapi.AssetOptions()
-        cubeB_asset = self.gym.create_box(self.sim, *([self.cubeB_size] * 3), cubeB_opts)
-        cubeB_color = gymapi.Vec3(0.0, 0.4, 0.1)
+        # Create target sphere asset instead of cubes
+        self.target_radius = 0.05
+        target_opts = gymapi.AssetOptions()
+        target_opts.density = 0.001
+        target_opts.disable_gravity = True
+        target_opts.fix_base_link = True
+        target_asset = self.gym.create_sphere(self.sim, self.target_radius, target_opts)
+        target_color = gymapi.Vec3(1.0, 0.0, 0.0)  # Red target
 
         self.num_franka_bodies = self.gym.get_asset_rigid_body_count(franka_asset)
         self.num_franka_dofs = self.gym.get_asset_dof_count(franka_asset)
@@ -266,6 +261,11 @@ class Franka_DNNE_Base(VecTask):
         self._franka_effort_limits = to_torch(self._franka_effort_limits, device=self.device)
         self.franka_dof_speed_scales = torch.ones_like(self.franka_dof_lower_limits)
         self.franka_dof_speed_scales[[7, 8]] = 0.1
+        
+        # Keep the safe training limits rather than using full effort limits
+        # This prevents instability with untrained networks
+        # if self.control_type == "joint_tor":
+        #     self.cmd_limit = self._franka_effort_limits[:7].unsqueeze(0)
         franka_dof_props['effort'][7] = 200
         franka_dof_props['effort'][8] = 200
 
@@ -286,19 +286,12 @@ class Franka_DNNE_Base(VecTask):
         table_stand_start_pose.p = gymapi.Vec3(*table_stand_pos)
         table_stand_start_pose.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0)
 
-        # Define start pose for cubes (doesn't really matter since they're get overridden during reset() anyways)
-        cubeA_start_pose = gymapi.Transform()
-        cubeA_start_pose.p = gymapi.Vec3(-1.0, 0.0, 0.0)
-        cubeA_start_pose.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0)
-        cubeB_start_pose = gymapi.Transform()
-        cubeB_start_pose.p = gymapi.Vec3(1.0, 0.0, 0.0)
-        cubeB_start_pose.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0)
 
         # compute aggregate size
         num_franka_bodies = self.gym.get_asset_rigid_body_count(franka_asset)
         num_franka_shapes = self.gym.get_asset_rigid_shape_count(franka_asset)
-        max_agg_bodies = num_franka_bodies + 4     # 1 for table, table stand, cubeA, cubeB
-        max_agg_shapes = num_franka_shapes + 4     # 1 for table, table stand, cubeA, cubeB
+        max_agg_bodies = num_franka_bodies + 3     # 1 for table, table stand, target
+        max_agg_shapes = num_franka_shapes + 3     # 1 for table, table stand, target
 
         self.frankas = []
         self.envs = []
@@ -338,12 +331,12 @@ class Franka_DNNE_Base(VecTask):
             if self.aggregate_mode == 1:
                 self.gym.begin_aggregate(env_ptr, max_agg_bodies, max_agg_shapes, True)
 
-            # Create cubes
-            self._cubeA_id = self.gym.create_actor(env_ptr, cubeA_asset, cubeA_start_pose, "cubeA", i, 2, 0)
-            self._cubeB_id = self.gym.create_actor(env_ptr, cubeB_asset, cubeB_start_pose, "cubeB", i, 4, 0)
-            # Set colors
-            self.gym.set_rigid_body_color(env_ptr, self._cubeA_id, 0, gymapi.MESH_VISUAL, cubeA_color)
-            self.gym.set_rigid_body_color(env_ptr, self._cubeB_id, 0, gymapi.MESH_VISUAL, cubeB_color)
+            # Create target sphere
+            target_start_pose = gymapi.Transform()
+            target_start_pose.p = gymapi.Vec3(0.0, 0.0, 1.3)  # Start at center, above table
+            self._target_id = self.gym.create_actor(env_ptr, target_asset, target_start_pose, "target", i, 2, 0)
+            # Set color
+            self.gym.set_rigid_body_color(env_ptr, self._target_id, 0, gymapi.MESH_VISUAL, target_color)
 
             if self.aggregate_mode > 0:
                 self.gym.end_aggregate(env_ptr)
@@ -353,8 +346,7 @@ class Franka_DNNE_Base(VecTask):
             self.frankas.append(franka_actor)
 
         # Setup init state buffer
-        self._init_cubeA_state = torch.zeros(self.num_envs, 13, device=self.device)
-        self._init_cubeB_state = torch.zeros(self.num_envs, 13, device=self.device)
+        self._init_target_state = torch.zeros(self.num_envs, 13, device=self.device)
 
         # Setup data
         self.init_data()
@@ -369,13 +361,13 @@ class Franka_DNNE_Base(VecTask):
             "leftfinger_tip": self.gym.find_actor_rigid_body_handle(env_ptr, franka_handle, "panda_leftfinger_tip"),
             "rightfinger_tip": self.gym.find_actor_rigid_body_handle(env_ptr, franka_handle, "panda_rightfinger_tip"),
             "grip_site": self.gym.find_actor_rigid_body_handle(env_ptr, franka_handle, "panda_grip_site"),
-            # Cubes
-            "cubeA_body_handle": self.gym.find_actor_rigid_body_handle(self.envs[0], self._cubeA_id, "box"),
-            "cubeB_body_handle": self.gym.find_actor_rigid_body_handle(self.envs[0], self._cubeB_id, "box"),
+            # Target
+            "target_body_handle": self.gym.find_actor_rigid_body_handle(self.envs[0], self._target_id, "sphere0"),
         }
 
         # Get total DOFs
         self.num_dofs = self.gym.get_sim_dof_count(self.sim) // self.num_envs
+        print(f"[DEBUG] Total DOFs per environment: {self.num_dofs}")
 
         # Setup tensor buffers
         _actor_root_state_tensor = self.gym.acquire_actor_root_state_tensor(self.sim)
@@ -396,14 +388,11 @@ class Franka_DNNE_Base(VecTask):
         _massmatrix = self.gym.acquire_mass_matrix_tensor(self.sim, "franka")
         mm = gymtorch.wrap_tensor(_massmatrix)
         self._mm = mm[:, :7, :7]
-        # DNNE: No cube states needed
-        # self._cubeA_state = self._root_state[:, self._cubeA_id, :]
-        # self._cubeB_state = self._root_state[:, self._cubeB_id, :]
+        self._target_state = self._root_state[:, self._target_id, :]
 
-        # Initialize states (no cube sizes for DNNE)
+        # Initialize states
         self.states.update({
-            # "cubeA_size": torch.ones_like(self._eef_state[:, 0]) * self.cubeA_size,
-            # "cubeB_size": torch.ones_like(self._eef_state[:, 0]) * self.cubeB_size,
+            # No cube sizes needed for target task
         })
 
         # Initialize actions
@@ -414,16 +403,11 @@ class Franka_DNNE_Base(VecTask):
         self._arm_control = self._effort_control[:, :7]
         self._gripper_control = self._pos_control[:, 7:9]
 
-        # Initialize indices
-        self._global_indices = torch.arange(self.num_envs * 5, dtype=torch.int32,
+        # Initialize indices (4 actors: franka, table, table_stand, target)
+        self._global_indices = torch.arange(self.num_envs * 4, dtype=torch.int32,
                                            device=self.device).view(self.num_envs, -1)
 
     def _update_states(self):
-        # Skip if tensors aren't initialized yet
-        if self._q is None:
-            return
-            
-        # Update Franka states only - no cubes in DNNE
         self.states.update({
             # Franka
             "q": self._q[:, :],
@@ -433,6 +417,10 @@ class Franka_DNNE_Base(VecTask):
             "eef_vel": self._eef_state[:, 7:],
             "eef_lf_pos": self._eef_lf_state[:, :3],
             "eef_rf_pos": self._eef_rf_state[:, :3],
+            # Target
+            "target_pos": self._target_state[:, :3],
+            "target_quat": self._target_state[:, 3:7],
+            "target_to_eef": self._target_state[:, :3] - self._eef_state[:, :3],
         })
 
     def _refresh(self):
@@ -446,44 +434,26 @@ class Franka_DNNE_Base(VecTask):
         self._update_states()
 
     def compute_reward(self, actions):
-        raise NotImplementedError("This environment is for DNNE only - rewards are computed externally")
+        # DNNE doesn't use rewards - handled externally
+        # Just check for episode timeout
+        self.reset_buf = torch.where(
+            self.progress_buf >= self.max_episode_length - 1,
+            torch.ones_like(self.reset_buf),
+            self.reset_buf
+        )
 
-    def post_physics_step(self):
-        """Override to prevent auto-termination and compute observations."""
-        self.progress_buf += 1
-        
-        # Handle resets if requested (from DNNE)
-        # Since DNNE only supports single environment (num_envs=1), 
-        # we check if the single environment needs reset
-        if self.reset_buf[0] > 0:
-            # Reset the single environment (index 0)
-            self.reset_idx(torch.tensor([0], device=self.device))
-        
-        # Compute observations (includes episode_elapsed_seconds)
-        self.compute_observations()
-        
-        # Never auto-terminate episodes - DNNE controls termination
-        self.reset_buf[0] = 0
-        
-        # Debug visualization if enabled
-        self._debug_viz()
-        
-        # Compute rewards (will raise NotImplementedError for DNNE)
-        # Skip this for DNNE environments
-        # self.compute_reward(self.actions)
-        
     def compute_observations(self):
         self._refresh()
         
-        # Calculate episode elapsed time in seconds
-        episode_elapsed_seconds = self.progress_buf.float() * self.dt
-        
-        obs = ["cubeA_quat", "cubeA_pos", "cubeA_to_cubeB_pos", "eef_pos", "eef_quat"]
+        # For DNNE: target_pos (3), eef_pos (3), eef_quat (4), joints/gripper (2 or 7), time (1)
+        obs = ["target_pos", "eef_pos", "eef_quat"]
         obs += ["q_gripper"] if self.control_type == "osc" else ["q"]
         
-        # Concatenate all observations including elapsed time
+        # Add episode time
+        episode_time = (self.progress_buf.float() * self.dt).unsqueeze(-1)
+        
         obs_list = [self.states[ob] for ob in obs]
-        obs_list.append(episode_elapsed_seconds.unsqueeze(-1))  # Add elapsed time as last element
+        obs_list.append(episode_time)
         
         self.obs_buf = torch.cat(obs_list, dim=-1)
 
@@ -492,16 +462,11 @@ class Franka_DNNE_Base(VecTask):
     def reset_idx(self, env_ids):
         env_ids_int32 = env_ids.to(dtype=torch.int32)
 
-        # DNNE: No cube reset needed
-        # # Reset cubes, sampling cube B first, then A
-        # # if not self._i:
-        # self._reset_init_cube_state(cube='B', env_ids=env_ids, check_valid=False)
-        # self._reset_init_cube_state(cube='A', env_ids=env_ids, check_valid=True)
-        # # self._i = True
-
-        # # Write these new init states to the sim states
-        # self._cubeA_state[env_ids] = self._init_cubeA_state[env_ids]
-        # self._cubeB_state[env_ids] = self._init_cubeB_state[env_ids]
+        # Reset target to random position in reachable shell
+        self._reset_target_state(env_ids)
+        
+        # Write the new init state to the sim state
+        self._target_state[env_ids] = self._init_target_state[env_ids]
 
         # Reset agent
         reset_noise = torch.rand((len(env_ids), 9), device=self.device)
@@ -537,114 +502,59 @@ class Franka_DNNE_Base(VecTask):
                                               gymtorch.unwrap_tensor(multi_env_ids_int32),
                                               len(multi_env_ids_int32))
 
-        # Update cube states
-        multi_env_ids_cubes_int32 = self._global_indices[env_ids, -2:].flatten()
+        # Update target states
+        multi_env_ids_target_int32 = self._global_indices[env_ids, -1:].flatten()
         self.gym.set_actor_root_state_tensor_indexed(
             self.sim, gymtorch.unwrap_tensor(self._root_state),
-            gymtorch.unwrap_tensor(multi_env_ids_cubes_int32), len(multi_env_ids_cubes_int32))
+            gymtorch.unwrap_tensor(multi_env_ids_target_int32), len(multi_env_ids_target_int32))
 
         self.progress_buf[env_ids] = 0
         self.reset_buf[env_ids] = 0
 
-    def _reset_init_cube_state(self, cube, env_ids, check_valid=True):
+    def _reset_target_state(self, env_ids):
         """
-        Simple method to sample @cube's position based on self.startPositionNoise and self.startRotationNoise, and
-        automaticlly reset the pose internally. Populates the appropriate self._init_cubeX_state
+        Reset target to random position within reachable shell for specified environments.
 
-        If @check_valid is True, then this will also make sure that the sampled position is not in contact with the
-        other cube.
-
+        
         Args:
-            cube(str): Which cube to sample location for. Either 'A' or 'B'
-            env_ids (tensor or None): Specific environments to reset cube for
-            check_valid (bool): Whether to make sure sampled position is collision-free with the other cube.
+            env_ids (tensor): Specific environments to reset target for
         """
-        # If env_ids is None, we reset all the envs
-        if env_ids is None:
-            env_ids = torch.arange(start=0, end=self.num_envs, device=self.device, dtype=torch.long)
-
-        # Initialize buffer to hold sampled values
         num_resets = len(env_ids)
-        sampled_cube_state = torch.zeros(num_resets, 13, device=self.device)
+        
+        # Sample random positions in a reachable shell
+        # Shell parameters (similar to old code)
+        shell_center = torch.tensor([0.0, 0.0, 1.3], device=self.device)  
+        inner_radius = 0.3
+        outer_radius = 0.6
 
-        # Get correct references depending on which one was selected
-        if cube.lower() == 'a':
-            this_cube_state_all = self._init_cubeA_state
-            other_cube_state = self._init_cubeB_state[env_ids, :]
-            cube_heights = self.states["cubeA_size"]
-        elif cube.lower() == 'b':
-            this_cube_state_all = self._init_cubeB_state
-            other_cube_state = self._init_cubeA_state[env_ids, :]
-            cube_heights = self.states["cubeA_size"]
-        else:
-            raise ValueError(f"Invalid cube specified, options are 'A' and 'B'; got: {cube}")
-
-        # Minimum cube distance for guarenteed collision-free sampling is the sum of each cube's effective radius
-        min_dists = (self.states["cubeA_size"] + self.states["cubeB_size"])[env_ids] * np.sqrt(2) / 2.0
-
-        # We scale the min dist by 2 so that the cubes aren't too close together
-        min_dists = min_dists * 2.0
-
-        # Sampling is "centered" around middle of table
-        centered_cube_xy_state = torch.tensor(self._table_surface_pos[:2], device=self.device, dtype=torch.float32)
-
-        # Set z value, which is fixed height
-        # Fix for single environment: handle scalar case after squeeze
-        cube_heights_squeezed = cube_heights.squeeze(-1)
-        if cube_heights_squeezed.dim() == 0:  # scalar case (single environment)
-            sampled_cube_state[:, 2] = self._table_surface_pos[2] + cube_heights_squeezed.item() / 2
-        else:
-            sampled_cube_state[:, 2] = self._table_surface_pos[2] + cube_heights_squeezed[env_ids] / 2
-
-        # Initialize rotation, which is no rotation (quat w = 1)
-        sampled_cube_state[:, 6] = 1.0
-
-        # If we're verifying valid sampling, we need to check and re-sample if any are not collision-free
-        # We use a simple heuristic of checking based on cubes' radius to determine if a collision would occur
-        if check_valid:
-            success = False
-            # Indexes corresponding to envs we're still actively sampling for
-            active_idx = torch.arange(num_resets, device=self.device)
-            num_active_idx = len(active_idx)
-            for i in range(100):
-                # Sample x y values
-                sampled_cube_state[active_idx, :2] = centered_cube_xy_state + \
-                                                     2.0 * self.start_position_noise * (
-                                                             torch.rand_like(sampled_cube_state[active_idx, :2]) - 0.5)
-                # Check if sampled values are valid
-                cube_dist = torch.linalg.norm(sampled_cube_state[:, :2] - other_cube_state[:, :2], dim=-1)
-                active_idx = torch.nonzero(cube_dist < min_dists, as_tuple=True)[0]
-                num_active_idx = len(active_idx)
-                # If active idx is empty, then all sampling is valid :D
-                if num_active_idx == 0:
-                    success = True
-                    break
-            # Make sure we succeeded at sampling
-            assert success, "Sampling cube locations was unsuccessful! ):"
-        else:
-            # We just directly sample
-            sampled_cube_state[:, :2] = centered_cube_xy_state.unsqueeze(0) + \
-                                              2.0 * self.start_position_noise * (
-                                                      torch.rand(num_resets, 2, device=self.device) - 0.5)
-
-        # Sample rotation value
-        if self.start_rotation_noise > 0:
-            aa_rot = torch.zeros(num_resets, 3, device=self.device)
-            aa_rot[:, 2] = 2.0 * self.start_rotation_noise * (torch.rand(num_resets, device=self.device) - 0.5)
-            sampled_cube_state[:, 3:7] = quat_mul(axisangle2quat(aa_rot), sampled_cube_state[:, 3:7])
-
-        # Lastly, set these sampled values as the new init state
-        this_cube_state_all[env_ids, :] = sampled_cube_state
+        
+        # Sample spherical coordinates
+        r = torch.rand(num_resets, device=self.device) * (outer_radius - inner_radius) + inner_radius
+        theta = torch.rand(num_resets, device=self.device) * np.pi  # 0 to pi for hemisphere
+        phi = torch.rand(num_resets, device=self.device) * 2 * np.pi  # 0 to 2pi
+        
+        # Convert to Cartesian
+        x = r * torch.sin(theta) * torch.cos(phi) + shell_center[0]
+        y = r * torch.sin(theta) * torch.sin(phi) + shell_center[1]
+        z = r * torch.cos(theta) + shell_center[2]
+        
+        # Set target positions
+        self._init_target_state[env_ids, 0] = x
+        self._init_target_state[env_ids, 1] = y
+        self._init_target_state[env_ids, 2] = z
+        
+        # Set identity quaternion (no rotation)
+        self._init_target_state[env_ids, 3:7] = torch.tensor([0., 0., 0., 1.], device=self.device)
+        
+        # Zero velocities
+        self._init_target_state[env_ids, 7:] = 0
+        
+        # Apply the target state to the simulation
+        self._target_state[env_ids] = self._init_target_state[env_ids]
 
     def _compute_osc_torques(self, dpose):
         # Solve for Operational Space Control # Paper: khatib.stanford.edu/publications/pdfs/Khatib_1987_RA.pdf
         # Helpful resource: studywolf.wordpress.com/2013/09/17/robot-control-4-operation-space-control/
-        
-        # Check if tensors are initialized
-        if self._q is None or self._qd is None:
-            # Return zeros if not initialized yet  
-            return torch.zeros((self.num_envs, 7), device=self.device)
-            
         q, qd = self._q[:, :7], self._qd[:, :7]
         mm_inv = torch.inverse(self._mm)
         m_eef_inv = self._j_eef @ mm_inv @ torch.transpose(self._j_eef, 1, 2)
@@ -672,14 +582,21 @@ class Franka_DNNE_Base(VecTask):
 
     def pre_physics_step(self, actions):
         self.actions = actions.clone().to(self.device)
-        
-        # Check if control tensors are initialized
-        if self._arm_control is None or self._gripper_control is None:
-            # Skip if not initialized yet
-            return
 
-        # Split arm and gripper command
-        u_arm, u_gripper = self.actions[:, :-1], self.actions[:, -1]
+        # Handle different action formats based on control type and action size
+        if self.actions.shape[1] == 8:
+            # 8 actions: 7 arm + 1 gripper (original format)
+            u_arm, u_gripper = self.actions[:, :-1], self.actions[:, -1]
+        elif self.actions.shape[1] == 7:
+            if self.control_type == "osc":
+                # 7 actions for OSC: 6 arm + 1 gripper
+                u_arm, u_gripper = self.actions[:, :-1], self.actions[:, -1]
+            else:
+                # 7 actions for joint_tor: all 7 are arm joints, no gripper
+                u_arm = self.actions
+                u_gripper = torch.zeros(self.actions.shape[0], device=self.device)
+        else:
+            raise ValueError(f"Unexpected action size: {self.actions.shape[1]}")
 
         # print(u_arm, u_gripper)
         # print(self.cmd_limit, self.action_scale)
@@ -703,8 +620,17 @@ class Franka_DNNE_Base(VecTask):
         self.gym.set_dof_position_target_tensor(self.sim, gymtorch.unwrap_tensor(self._pos_control))
         self.gym.set_dof_actuation_force_tensor(self.sim, gymtorch.unwrap_tensor(self._effort_control))
 
-    def _debug_viz(self):
-        """Debug visualization for environment."""
+    def post_physics_step(self):
+        self.progress_buf += 1
+
+        env_ids = self.reset_buf.nonzero(as_tuple=False).squeeze(-1)
+        if len(env_ids) > 0:
+            self.reset_idx(env_ids)
+
+        self.compute_observations()
+        self.compute_reward(self.actions)
+
+        # debug viz
         if self.viewer and self.debug_viz:
             self.gym.clear_lines(self.viewer)
             self.gym.refresh_rigid_body_state_tensor(self.sim)
@@ -712,14 +638,12 @@ class Franka_DNNE_Base(VecTask):
             # Grab relevant states to visualize
             eef_pos = self.states["eef_pos"]
             eef_rot = self.states["eef_quat"]
-            cubeA_pos = self.states["cubeA_pos"]
-            cubeA_rot = self.states["cubeA_quat"]
-            cubeB_pos = self.states["cubeB_pos"]
-            cubeB_rot = self.states["cubeB_quat"]
+            target_pos = self.states["target_pos"]
+            target_rot = self.states["target_quat"]
 
             # Plot visualizations
             for i in range(self.num_envs):
-                for pos, rot in zip((eef_pos, cubeA_pos, cubeB_pos), (eef_rot, cubeA_rot, cubeB_rot)):
+                for pos, rot in zip((eef_pos, target_pos), (eef_rot, target_rot)):
                     px = (pos[i] + quat_apply(rot[i], to_torch([1, 0, 0], device=self.device) * 0.2)).cpu().numpy()
                     py = (pos[i] + quat_apply(rot[i], to_torch([0, 1, 0], device=self.device) * 0.2)).cpu().numpy()
                     pz = (pos[i] + quat_apply(rot[i], to_torch([0, 0, 1], device=self.device) * 0.2)).cpu().numpy()
@@ -734,4 +658,4 @@ class Franka_DNNE_Base(VecTask):
 #####################################################################
 
 
-# Removed compute_franka_reward function - not needed for DNNE environments
+# Removed compute_franka_reward - DNNE doesn't use rewards
