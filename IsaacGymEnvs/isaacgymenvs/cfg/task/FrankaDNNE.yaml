@@ -55,8 +55,8 @@ env:
             gripper_force: 7            # Gripper force command
         
         joint_tor:
-          numObservations: 18           # Actual: target(3) + eef_pos(3) + eef_quat(4) + joints(7) + time(1)
-          numActions: 7                 # 7 joint torques
+          numObservations: 20           # Actual: target(3) + eef_pos(3) + eef_quat(4) + joints(9) + time(1)
+          numActions: 7                 # 7 joint torques (arm only, not gripper)
           nullAction: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
           description: "Reach target with joint torque control"
           
@@ -65,8 +65,8 @@ env:
             target_pos: [0, 2]           # Target position (x,y,z)
             eef_pos: [3, 5]              # End-effector position (x,y,z)  
             eef_quat: [6, 9]             # End-effector quaternion (x,y,z,w)
-            joint_theta: [10, 16]        # 7 joint angles in radians
-            episode_time: 17            # Episode elapsed time in seconds
+            joint_theta: [10, 18]        # 9 joint angles in radians (7 arm + 2 gripper)
+            episode_time: 19             # Episode elapsed time in seconds
           
           actionSchema:
             joint_torques: [0, 6]        # 7 joint torque commands (indices 0-6 inclusive)
