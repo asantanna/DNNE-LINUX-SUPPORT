@@ -159,9 +159,24 @@ class FrankaDNNE(VecTask):
         if self.control_type == "osc":
             self.cmd_limit = to_torch([0.1, 0.1, 0.1, 0.5, 0.5, 0.5], device=self.device).unsqueeze(0)
         else:
-            # For joint_tor, use small limits to prevent unstable behavior with untrained networks
-            # These are much smaller than actual robot limits but safe for training
-            self.cmd_limit = to_torch([1.0, 1.0, 1.0, 1.0, 0.5, 0.5, 0.5], device=self.device).unsqueeze(0)
+            # For joint_tor, check if we have custom torque limits in the config
+            joint_control_cfg = self.cfg["env"].get("dnne", {}).get("joint_control", None)
+            if joint_control_cfg and "torque_limits" in joint_control_cfg:
+                # Use configured torque limits
+                torque_limits = joint_control_cfg["torque_limits"]
+                cmd_limits = []
+                for i in range(7):
+                    if i in torque_limits:
+                        cmd_limits.append(torque_limits[i])
+                    else:
+                        # Default safe limit for joints not specified
+                        cmd_limits.append(0.5 if i > 3 else 1.0)
+                self.cmd_limit = to_torch(cmd_limits, device=self.device).unsqueeze(0)
+                print(f"Using configured torque limits: {cmd_limits}")
+            else:
+                # Default: use small limits to prevent unstable behavior with untrained networks
+                # These are much smaller than actual robot limits but safe for training
+                self.cmd_limit = to_torch([1.0, 1.0, 1.0, 1.0, 0.5, 0.5, 0.5], device=self.device).unsqueeze(0)
 
         # Reset all environments
         self.reset_idx(torch.arange(self.num_envs, device=self.device))
@@ -206,8 +221,52 @@ class FrankaDNNE(VecTask):
         asset_options.use_mesh_materials = True
         franka_asset = self.gym.load_asset(self.sim, asset_root, franka_asset_file, asset_options)
 
-        franka_dof_stiffness = to_torch([0, 0, 0, 0, 0, 0, 0, 5000., 5000.], dtype=torch.float, device=self.device)
-        franka_dof_damping = to_torch([0, 0, 0, 0, 0, 0, 0, 1.0e2, 1.0e2], dtype=torch.float, device=self.device)
+        # Read joint control configuration from YAML if available
+        joint_control_cfg = self.cfg["env"].get("dnne", {}).get("joint_control", None)
+        
+        if joint_control_cfg:
+            # Use YAML configuration for joint freezing
+            controlled_joints = joint_control_cfg.get("controlled_joints", [0, 1, 2, 3, 4, 5, 6])
+            freeze_mode = joint_control_cfg.get("freeze_mode", "position")
+            freeze_pos_stiffness = joint_control_cfg.get("freeze_position_stiffness", 5000.0)
+            freeze_pos_damping = joint_control_cfg.get("freeze_position_damping", 100.0)
+            freeze_effort_damping = joint_control_cfg.get("freeze_effort_damping", 50.0)
+            
+            # Initialize arrays based on configuration
+            franka_dof_stiffness = []
+            franka_dof_damping = []
+            
+            for i in range(9):  # 7 arm joints + 2 gripper joints
+                if i < 7:  # Arm joints
+                    if i in controlled_joints:
+                        # Controlled joint - use effort mode with no stiffness/damping
+                        franka_dof_stiffness.append(0.0)
+                        franka_dof_damping.append(0.0)
+                    else:
+                        # Frozen joint - apply freeze settings
+                        if freeze_mode == "position":
+                            franka_dof_stiffness.append(freeze_pos_stiffness)
+                            franka_dof_damping.append(freeze_pos_damping)
+                        else:  # damped_effort mode
+                            franka_dof_stiffness.append(0.0)
+                            franka_dof_damping.append(freeze_effort_damping)
+                else:  # Gripper joints (7, 8)
+                    franka_dof_stiffness.append(5000.0)
+                    franka_dof_damping.append(100.0)
+            
+            franka_dof_stiffness = to_torch(franka_dof_stiffness, dtype=torch.float, device=self.device)
+            franka_dof_damping = to_torch(franka_dof_damping, dtype=torch.float, device=self.device)
+            
+            # Store configuration for later use
+            self.controlled_joints = controlled_joints
+            self.freeze_mode = freeze_mode
+            print(f"Joint control config: controlled={controlled_joints}, freeze_mode={freeze_mode}")
+        else:
+            # Default behavior if no joint control config
+            franka_dof_stiffness = to_torch([0, 0, 0, 0, 0, 0, 0, 5000., 5000.], dtype=torch.float, device=self.device)
+            franka_dof_damping = to_torch([0, 0, 0, 0, 0, 0, 0, 1.0e2, 1.0e2], dtype=torch.float, device=self.device)
+            self.controlled_joints = list(range(7))
+            self.freeze_mode = None
 
         # Create table asset
         table_pos = [0.0, 0.0, 1.0]
@@ -244,7 +303,20 @@ class FrankaDNNE(VecTask):
         self.franka_dof_upper_limits = []
         self._franka_effort_limits = []
         for i in range(self.num_franka_dofs):
-            franka_dof_props['driveMode'][i] = gymapi.DOF_MODE_POS if i > 6 else gymapi.DOF_MODE_EFFORT
+            # Set drive mode based on joint control configuration
+            if i < 7:  # Arm joints
+                if hasattr(self, 'controlled_joints') and self.freeze_mode == "position":
+                    # Use position control for frozen joints, effort for controlled joints
+                    if i in self.controlled_joints:
+                        franka_dof_props['driveMode'][i] = gymapi.DOF_MODE_EFFORT
+                    else:
+                        franka_dof_props['driveMode'][i] = gymapi.DOF_MODE_POS
+                else:
+                    # Default: all arm joints in effort mode
+                    franka_dof_props['driveMode'][i] = gymapi.DOF_MODE_EFFORT
+            else:  # Gripper joints (7, 8)
+                franka_dof_props['driveMode'][i] = gymapi.DOF_MODE_POS
+            
             if self.physics_engine == gymapi.SIM_PHYSX:
                 franka_dof_props['stiffness'][i] = franka_dof_stiffness[i]
                 franka_dof_props['damping'][i] = franka_dof_damping[i]
