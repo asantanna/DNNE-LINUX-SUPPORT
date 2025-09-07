@@ -612,10 +612,24 @@ class FrankaDNNE(VecTask):
         inner_radius = 0.3
         outer_radius = 0.6
 
+        # Table surface height: table at z=1.0 with thickness 0.05 + safety margin
+        min_z_above_table = 1.05 + 0.1  # 10cm above table surface
         
         # Sample spherical coordinates
         r = torch.rand(num_resets, device=self.device) * (outer_radius - inner_radius) + inner_radius
-        theta = torch.rand(num_resets, device=self.device) * np.pi  # 0 to pi for hemisphere
+        
+        # FIX: Limit theta to ensure target stays above table
+        # Previously theta could go from 0 to pi, allowing targets below the table
+        # Now we calculate max_theta to ensure z >= min_z_above_table
+        # Math: z = r * cos(theta) + shell_center[2] >= min_z_above_table
+        #       cos(theta) >= (min_z_above_table - shell_center[2]) / r
+        # Use outer_radius for safety since r varies
+        cos_theta_min = (min_z_above_table - shell_center[2]) / outer_radius
+        # Clamp to valid cosine range
+        cos_theta_min = max(min(cos_theta_min, 1.0), -1.0)  # Avoid tensor creation warning
+        max_theta = torch.acos(torch.tensor(cos_theta_min, device=self.device))
+        
+        theta = torch.rand(num_resets, device=self.device) * max_theta  # 0 to max_theta for upper hemisphere
         phi = torch.rand(num_resets, device=self.device) * 2 * np.pi  # 0 to 2pi
         
         # Convert to Cartesian
