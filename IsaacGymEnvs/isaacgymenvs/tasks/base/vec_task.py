@@ -138,10 +138,11 @@ class Env(ABC):
         """Create torch buffers for observations, rewards, actions dones and any additional data."""
 
     @abc.abstractmethod
-    def step(self, actions: torch.Tensor) -> Tuple[Dict[str, torch.Tensor], torch.Tensor, torch.Tensor, Dict[str, Any]]:
+    def step(self, actions: torch.Tensor, extra_args=None) -> Tuple[Dict[str, torch.Tensor], torch.Tensor, torch.Tensor, Dict[str, Any]]:
         """Step the physics of the environment.
         Args:
             actions: actions to apply
+            extra_args: optional dictionary with extra parameters (e.g., debug visualization)
         Returns:
             Observations, rewards, resets, info
             Observations are dict of observations (currently only one member called 'obs')
@@ -368,11 +369,12 @@ class VecTask(Env):
     def post_physics_step(self):
         """Compute reward and observations, reset any environments that require it."""
 
-    def step(self, actions: torch.Tensor) -> Tuple[Dict[str, torch.Tensor], torch.Tensor, torch.Tensor, Dict[str, Any]]:
+    def step(self, actions: torch.Tensor, extra_args=None) -> Tuple[Dict[str, torch.Tensor], torch.Tensor, torch.Tensor, Dict[str, Any]]:
         """Step the physics of the environment.
 
         Args:
             actions: actions to apply
+            extra_args: optional dictionary with extra parameters (e.g., debug visualization)
         Returns:
             Observations, rewards, resets, info
             Observations are dict of observations (currently only one member called 'obs')
@@ -401,8 +403,12 @@ class VecTask(Env):
             actions = self.dr_randomizations['actions']['noise_lambda'](actions)
 
         action_tensor = torch.clamp(actions, -self.clip_actions, self.clip_actions)
-        # apply actions
-        self.pre_physics_step(action_tensor)
+        # apply actions (pass extra_args if the derived class supports it)
+        import inspect
+        if 'extra_args' in inspect.signature(self.pre_physics_step).parameters:
+            self.pre_physics_step(action_tensor, extra_args)
+        else:
+            self.pre_physics_step(action_tensor)
 
         # step physics and render each frame
         for i in range(self.control_freq_inv):

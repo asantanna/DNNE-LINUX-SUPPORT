@@ -116,6 +116,8 @@ class FrankaDNNE(VecTask):
         self._init_target_state = None          # Initial state of target for the current env
         self._target_state = None                # Current state of target for the current env
         self._target_id = None                   # Actor ID corresponding to target for a given env
+        self._debug_sphere_id = None            # Actor ID for debug sphere
+        self._debug_sphere_state = None         # Current state of debug sphere
 
         # Tensor placeholders
         self._root_state = None             # State of root body        (n_envs, 13)
@@ -295,6 +297,17 @@ class FrankaDNNE(VecTask):
         target_asset = self.gym.create_sphere(self.sim, self.target_radius, target_opts)
         target_color = gymapi.Vec3(1.0, 0.0, 0.0)  # Red target
 
+        # Create debug sphere asset (visual only, no physics interactions)
+        self.debug_sphere_radius = 0.03
+        debug_sphere_opts = gymapi.AssetOptions()
+        debug_sphere_opts.density = 0.001
+        debug_sphere_opts.disable_gravity = True
+        debug_sphere_opts.fix_base_link = True
+        # CRITICAL: Set collision filters to prevent ALL physics interactions
+        debug_sphere_opts.collision_filter = 0  # Collide with nothing
+        debug_sphere_asset = self.gym.create_sphere(self.sim, self.debug_sphere_radius, debug_sphere_opts)
+        debug_sphere_color = gymapi.Vec3(0.5, 0.5, 0.5)  # Gray
+
         self.num_franka_bodies = self.gym.get_asset_rigid_body_count(franka_asset)
         self.num_franka_dofs = self.gym.get_asset_dof_count(franka_asset)
 
@@ -366,8 +379,8 @@ class FrankaDNNE(VecTask):
         # compute aggregate size
         num_franka_bodies = self.gym.get_asset_rigid_body_count(franka_asset)
         num_franka_shapes = self.gym.get_asset_rigid_shape_count(franka_asset)
-        max_agg_bodies = num_franka_bodies + 3     # 1 for table, table stand, target
-        max_agg_shapes = num_franka_shapes + 3     # 1 for table, table stand, target
+        max_agg_bodies = num_franka_bodies + 4     # 1 for table, table stand, target, debug sphere
+        max_agg_shapes = num_franka_shapes + 4     # 1 for table, table stand, target, debug sphere
 
         self.frankas = []
         self.envs = []
@@ -413,6 +426,13 @@ class FrankaDNNE(VecTask):
             self._target_id = self.gym.create_actor(env_ptr, target_asset, target_start_pose, "target", i, 2, 0)
             # Set color
             self.gym.set_rigid_body_color(env_ptr, self._target_id, 0, gymapi.MESH_VISUAL, target_color)
+
+            # Create debug sphere (visual only, hidden initially)
+            debug_start_pose = gymapi.Transform()
+            debug_start_pose.p = gymapi.Vec3(0.0, 0.0, -10.0)  # Start hidden below the scene
+            self._debug_sphere_id = self.gym.create_actor(env_ptr, debug_sphere_asset, debug_start_pose, "debug_sphere", i, 0, 0)
+            # Set color to gray
+            self.gym.set_rigid_body_color(env_ptr, self._debug_sphere_id, 0, gymapi.MESH_VISUAL, debug_sphere_color)
 
             if self.aggregate_mode > 0:
                 self.gym.end_aggregate(env_ptr)
@@ -465,6 +485,7 @@ class FrankaDNNE(VecTask):
         mm = gymtorch.wrap_tensor(_massmatrix)
         self._mm = mm[:, :7, :7]
         self._target_state = self._root_state[:, self._target_id, :]
+        self._debug_sphere_state = self._root_state[:, self._debug_sphere_id, :]
 
         # Initialize states
         self.states.update({
@@ -698,8 +719,27 @@ class FrankaDNNE(VecTask):
 
         return u
 
-    def pre_physics_step(self, actions):
+    def pre_physics_step(self, actions, extra_args=None):
         self.actions = actions.clone().to(self.device)
+        
+        # Handle debug sphere visualization if requested
+        if extra_args and "debug_sphere_pos" in extra_args:
+            pos = extra_args["debug_sphere_pos"]
+            # Update debug sphere position
+            self._debug_sphere_state[0, 0:3] = torch.tensor(pos, device=self.device, dtype=torch.float32)
+            # Keep orientation as identity quaternion
+            self._debug_sphere_state[0, 3:7] = torch.tensor([0., 0., 0., 1.], device=self.device)
+            # Zero velocities
+            self._debug_sphere_state[0, 7:] = 0
+            
+            # Apply state update to simulation
+            multi_env_ids_debug = self._global_indices[0, self._debug_sphere_id].unsqueeze(0).to(torch.int32)
+            self.gym.set_actor_root_state_tensor_indexed(
+                self.sim, 
+                gymtorch.unwrap_tensor(self._root_state),
+                gymtorch.unwrap_tensor(multi_env_ids_debug), 
+                1
+            )
 
         # Handle different action formats based on control type and action size
         if self.actions.shape[1] == 8:
