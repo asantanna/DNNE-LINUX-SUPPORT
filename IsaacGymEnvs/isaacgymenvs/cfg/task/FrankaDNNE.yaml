@@ -11,7 +11,7 @@ env:
   # DNNE environments must use single environment
   numEnvs: 1
   envSpacing: 1.5
-  episodeLength: 600  # 10 seconds of simulation time (600 * 0.01667 = 10 seconds)
+  episodeLength: 300  # 5 seconds of simulation time (300 * 0.01667 = 5 seconds)
   enableDebugVis: False
 
   clipObservations: 5.0
@@ -46,6 +46,10 @@ env:
       
       # Settings for damped effort-controlled frozen joints  
       freeze_effort_damping: 50.0
+      
+      # Friction/damping for controlled joints to prevent drift
+      # Higher values provide more resistance to motion (typical: 0.5 to 5.0)
+      controlled_joint_friction: 2.0
       
       # Safe torque limits for controlled joints (Nm)
       # These low values prevent instability during early training

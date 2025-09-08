@@ -232,6 +232,9 @@ class FrankaDNNE(VecTask):
             freeze_pos_damping = joint_control_cfg.get("freeze_position_damping", 100.0)
             freeze_effort_damping = joint_control_cfg.get("freeze_effort_damping", 50.0)
             
+            # New: Add friction to controlled joints to prevent drift
+            controlled_joint_friction = joint_control_cfg.get("controlled_joint_friction", 0.0)
+            
             # Initialize arrays based on configuration
             franka_dof_stiffness = []
             franka_dof_damping = []
@@ -239,9 +242,9 @@ class FrankaDNNE(VecTask):
             for i in range(9):  # 7 arm joints + 2 gripper joints
                 if i < 7:  # Arm joints
                     if i in controlled_joints:
-                        # Controlled joint - use effort mode with no stiffness/damping
+                        # Controlled joint - use effort mode with optional friction damping
                         franka_dof_stiffness.append(0.0)
-                        franka_dof_damping.append(0.0)
+                        franka_dof_damping.append(controlled_joint_friction)
                     else:
                         # Frozen joint - apply freeze settings
                         if freeze_mode == "position":
@@ -260,7 +263,8 @@ class FrankaDNNE(VecTask):
             # Store configuration for later use
             self.controlled_joints = controlled_joints
             self.freeze_mode = freeze_mode
-            print(f"Joint control config: controlled={controlled_joints}, freeze_mode={freeze_mode}")
+            self.controlled_joint_friction = controlled_joint_friction
+            print(f"Joint control config: controlled={controlled_joints}, freeze_mode={freeze_mode}, friction={controlled_joint_friction}")
         else:
             # Default behavior if no joint control config
             franka_dof_stiffness = to_torch([0, 0, 0, 0, 0, 0, 0, 5000., 5000.], dtype=torch.float, device=self.device)
@@ -511,6 +515,12 @@ class FrankaDNNE(VecTask):
         target_distance = torch.norm(self.states["target_to_eef"], dim=-1)
         target_reached = target_distance < 0.1  # Within 10cm of target
         
+        # Check for gripper-table collision (gripper too close to table)
+        gripper_z = self.states["eef_pos"][:, 2]  # Z position of gripper
+        table_surface_z = self._table_surface_pos[2]  # Table surface height (set in _create_envs)
+        gripper_safety_margin = 0.05  # 5cm safety margin above table
+        gripper_too_low = gripper_z < (table_surface_z + gripper_safety_margin)
+        
         # Debug output when target is reached
         if target_reached.any() and not hasattr(self, '_last_target_reached'):
             self._last_target_reached = False
@@ -520,9 +530,18 @@ class FrankaDNNE(VecTask):
         elif not target_reached.any():
             self._last_target_reached = False
         
-        # Set reset for timeout OR target reached
+        # Debug output when gripper hits table
+        if gripper_too_low.any() and not hasattr(self, '_last_gripper_low'):
+            self._last_gripper_low = False
+        if gripper_too_low.any() and not self._last_gripper_low:
+            print(f"[DNNE] Gripper too close to table! Height: {gripper_z[0]:.3f}m, Table: {table_surface_z:.3f}m")
+            self._last_gripper_low = True
+        elif not gripper_too_low.any():
+            self._last_gripper_low = False
+        
+        # Set reset for timeout OR target reached OR gripper-table collision
         self.reset_buf = torch.where(
-            (self.progress_buf >= self.max_episode_length - 1) | target_reached,
+            (self.progress_buf >= self.max_episode_length - 1) | target_reached | gripper_too_low,
             torch.ones_like(self.reset_buf),
             self.reset_buf
         )
