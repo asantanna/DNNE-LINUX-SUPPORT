@@ -298,15 +298,13 @@ class FrankaDNNE(VecTask):
         target_color = gymapi.Vec3(1.0, 0.0, 0.0)  # Red target
 
         # Create debug sphere asset (visual only, no physics interactions)
-        self.debug_sphere_radius = 0.03
+        self.debug_sphere_radius = 0.01  # Reduced to 1/3 of original size
         debug_sphere_opts = gymapi.AssetOptions()
-        debug_sphere_opts.density = 0.001
-        debug_sphere_opts.disable_gravity = True
+        debug_sphere_opts.kinematic = True  # Kinematic: no physics interaction
+        debug_sphere_opts.disable_gravity = True  # Explicitly disable gravity (redundant but safe)
         debug_sphere_opts.fix_base_link = True
-        # CRITICAL: Set collision filters to prevent ALL physics interactions
-        debug_sphere_opts.collision_filter = 0  # Collide with nothing
         debug_sphere_asset = self.gym.create_sphere(self.sim, self.debug_sphere_radius, debug_sphere_opts)
-        debug_sphere_color = gymapi.Vec3(0.5, 0.5, 0.5)  # Gray
+        debug_sphere_color = gymapi.Vec3(1.0, 0.0, 0.0)  # Red
 
         self.num_franka_bodies = self.gym.get_asset_rigid_body_count(franka_asset)
         self.num_franka_dofs = self.gym.get_asset_dof_count(franka_asset)
@@ -430,8 +428,10 @@ class FrankaDNNE(VecTask):
             # Create debug sphere (visual only, hidden initially)
             debug_start_pose = gymapi.Transform()
             debug_start_pose.p = gymapi.Vec3(0.0, 0.0, -10.0)  # Start hidden below the scene
+            # Kinematic object doesn't need special collision groups - it won't collide
             self._debug_sphere_id = self.gym.create_actor(env_ptr, debug_sphere_asset, debug_start_pose, "debug_sphere", i, 0, 0)
-            # Set color to gray
+            
+            # Set color to red
             self.gym.set_rigid_body_color(env_ptr, self._debug_sphere_id, 0, gymapi.MESH_VISUAL, debug_sphere_color)
 
             if self.aggregate_mode > 0:
@@ -500,8 +500,8 @@ class FrankaDNNE(VecTask):
         self._arm_control = self._effort_control[:, :7]
         self._gripper_control = self._pos_control[:, 7:9]
 
-        # Initialize indices (4 actors: franka, table, table_stand, target)
-        self._global_indices = torch.arange(self.num_envs * 4, dtype=torch.int32,
+        # Initialize indices (5 actors: franka, table, table_stand, target, debug_sphere)
+        self._global_indices = torch.arange(self.num_envs * 5, dtype=torch.int32,
                                            device=self.device).view(self.num_envs, -1)
 
     def _update_states(self):
@@ -627,8 +627,8 @@ class FrankaDNNE(VecTask):
                                               gymtorch.unwrap_tensor(multi_env_ids_int32),
                                               len(multi_env_ids_int32))
 
-        # Update target states
-        multi_env_ids_target_int32 = self._global_indices[env_ids, -1:].flatten()
+        # Update target states (target is actor 3, debug_sphere is actor 4)
+        multi_env_ids_target_int32 = self._global_indices[env_ids, 3:4].flatten()
         self.gym.set_actor_root_state_tensor_indexed(
             self.sim, gymtorch.unwrap_tensor(self._root_state),
             gymtorch.unwrap_tensor(multi_env_ids_target_int32), len(multi_env_ids_target_int32))
@@ -732,8 +732,8 @@ class FrankaDNNE(VecTask):
             # Zero velocities
             self._debug_sphere_state[0, 7:] = 0
             
-            # Apply state update to simulation
-            multi_env_ids_debug = self._global_indices[0, self._debug_sphere_id].unsqueeze(0).to(torch.int32)
+            # Apply state update to simulation (debug_sphere is actor 4)
+            multi_env_ids_debug = self._global_indices[0, 4].unsqueeze(0).to(torch.int32)
             self.gym.set_actor_root_state_tensor_indexed(
                 self.sim, 
                 gymtorch.unwrap_tensor(self._root_state),
