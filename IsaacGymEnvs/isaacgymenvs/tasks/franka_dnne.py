@@ -298,10 +298,10 @@ class FrankaDNNE(VecTask):
         target_color = gymapi.Vec3(1.0, 0.0, 0.0)  # Red target
 
         # Create debug sphere asset (visual only, no physics interactions)
-        self.debug_sphere_radius = 0.01  # Reduced to 1/3 of original size
+        self.debug_sphere_radius = 0.01  # Small red sphere
         debug_sphere_opts = gymapi.AssetOptions()
-        debug_sphere_opts.kinematic = True  # Kinematic: no physics interaction
-        debug_sphere_opts.disable_gravity = True  # Explicitly disable gravity (redundant but safe)
+        debug_sphere_opts.density = 0.001  # Very light
+        debug_sphere_opts.disable_gravity = True
         debug_sphere_opts.fix_base_link = True
         debug_sphere_asset = self.gym.create_sphere(self.sim, self.debug_sphere_radius, debug_sphere_opts)
         debug_sphere_color = gymapi.Vec3(1.0, 0.0, 0.0)  # Red
@@ -428,8 +428,11 @@ class FrankaDNNE(VecTask):
             # Create debug sphere (visual only, hidden initially)
             debug_start_pose = gymapi.Transform()
             debug_start_pose.p = gymapi.Vec3(0.0, 0.0, -10.0)  # Start hidden below the scene
-            # Kinematic object doesn't need special collision groups - it won't collide
-            self._debug_sphere_id = self.gym.create_actor(env_ptr, debug_sphere_asset, debug_start_pose, "debug_sphere", i, 0, 0)
+            # Use unique collision filter to prevent all interactions
+            debug_sphere_filter = 0b1000  # Unique bit mask that doesn't overlap with others
+            debug_sphere_group = 0  # Collision group
+            self._debug_sphere_id = self.gym.create_actor(env_ptr, debug_sphere_asset, debug_start_pose, 
+                                                         "debug_sphere", debug_sphere_group, debug_sphere_filter)
             
             # Set color to red
             self.gym.set_rigid_body_color(env_ptr, self._debug_sphere_id, 0, gymapi.MESH_VISUAL, debug_sphere_color)
