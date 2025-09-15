@@ -32,8 +32,9 @@ import torch
 
 from isaacgym import gymtorch
 from isaacgym import gymapi
+from isaacgym import gymutil
 
-from isaacgymenvs.utils.torch_jit_utils import quat_mul, to_torch, tensor_clamp  
+from isaacgymenvs.utils.torch_jit_utils import quat_mul, to_torch, tensor_clamp, quat_apply
 from isaacgymenvs.tasks.base.vec_task import VecTask
 
 
@@ -116,8 +117,7 @@ class FrankaDNNE(VecTask):
         self._init_target_state = None          # Initial state of target for the current env
         self._target_state = None                # Current state of target for the current env
         self._target_id = None                   # Actor ID corresponding to target for a given env
-        self._debug_sphere_id = None            # Actor ID for debug sphere
-        self._debug_sphere_state = None         # Current state of debug sphere
+        # Debug sphere is now rendered directly without physics actor
 
         # Tensor placeholders
         self._root_state = None             # State of root body        (n_envs, 13)
@@ -297,14 +297,16 @@ class FrankaDNNE(VecTask):
         target_asset = self.gym.create_sphere(self.sim, self.target_radius, target_opts)
         target_color = gymapi.Vec3(1.0, 0.0, 0.0)  # Red target
 
-        # Create debug sphere asset (visual only, no physics interactions)
+        # Debug sphere is now rendered directly without physics
+        # No longer creating a physics actor for the debug sphere
         self.debug_sphere_radius = 0.01  # Small red sphere
-        debug_sphere_opts = gymapi.AssetOptions()
-        debug_sphere_opts.density = 0.001  # Very light
-        debug_sphere_opts.disable_gravity = True
-        debug_sphere_opts.fix_base_link = True
-        debug_sphere_asset = self.gym.create_sphere(self.sim, self.debug_sphere_radius, debug_sphere_opts)
-        debug_sphere_color = gymapi.Vec3(1.0, 0.0, 0.0)  # Red
+        # Create wireframe sphere geometry for direct rendering
+        self.debug_sphere_geom = gymutil.WireframeSphereGeometry(
+            radius=self.debug_sphere_radius,
+            num_lats=24,
+            num_lons=24,
+            color=(1.0, 0.0, 0.0)  # Red
+        )
 
         self.num_franka_bodies = self.gym.get_asset_rigid_body_count(franka_asset)
         self.num_franka_dofs = self.gym.get_asset_dof_count(franka_asset)
@@ -425,17 +427,8 @@ class FrankaDNNE(VecTask):
             # Set color
             self.gym.set_rigid_body_color(env_ptr, self._target_id, 0, gymapi.MESH_VISUAL, target_color)
 
-            # Create debug sphere (visual only, hidden initially)
-            debug_start_pose = gymapi.Transform()
-            debug_start_pose.p = gymapi.Vec3(0.0, 0.0, -10.0)  # Start hidden below the scene
-            # Use unique collision filter to prevent all interactions
-            debug_sphere_filter = 0b1000  # Unique bit mask that doesn't overlap with others
-            debug_sphere_group = 0  # Collision group
-            self._debug_sphere_id = self.gym.create_actor(env_ptr, debug_sphere_asset, debug_start_pose, 
-                                                         "debug_sphere", debug_sphere_group, debug_sphere_filter)
-            
-            # Set color to red
-            self.gym.set_rigid_body_color(env_ptr, self._debug_sphere_id, 0, gymapi.MESH_VISUAL, debug_sphere_color)
+            # Debug sphere is now rendered directly in visualization loop
+            # No physics actor created - purely visual rendering
 
             if self.aggregate_mode > 0:
                 self.gym.end_aggregate(env_ptr)
@@ -488,7 +481,7 @@ class FrankaDNNE(VecTask):
         mm = gymtorch.wrap_tensor(_massmatrix)
         self._mm = mm[:, :7, :7]
         self._target_state = self._root_state[:, self._target_id, :]
-        self._debug_sphere_state = self._root_state[:, self._debug_sphere_id, :]
+        # Debug sphere is now rendered directly without physics actor
 
         # Initialize states
         self.states.update({
@@ -725,24 +718,13 @@ class FrankaDNNE(VecTask):
     def pre_physics_step(self, actions, extra_args=None):
         self.actions = actions.clone().to(self.device)
         
-        # Handle debug sphere visualization if requested
+        # Store debug sphere position if requested for rendering in visualization
+        self.debug_sphere_pos = None
         if extra_args and "debug_sphere_pos" in extra_args:
             pos = extra_args["debug_sphere_pos"]
-            # Update debug sphere position
-            self._debug_sphere_state[0, 0:3] = torch.tensor(pos, device=self.device, dtype=torch.float32)
-            # Keep orientation as identity quaternion
-            self._debug_sphere_state[0, 3:7] = torch.tensor([0., 0., 0., 1.], device=self.device)
-            # Zero velocities
-            self._debug_sphere_state[0, 7:] = 0
-            
-            # Apply state update to simulation (debug_sphere is actor 4)
-            multi_env_ids_debug = self._global_indices[0, 4].unsqueeze(0).to(torch.int32)
-            self.gym.set_actor_root_state_tensor_indexed(
-                self.sim, 
-                gymtorch.unwrap_tensor(self._root_state),
-                gymtorch.unwrap_tensor(multi_env_ids_debug), 
-                1
-            )
+            if pos is not None and len(pos) == 3:
+                # Store position for rendering in visualization loop (no physics actor)
+                self.debug_sphere_pos = pos
 
         # Handle different action formats based on control type and action size
         if self.actions.shape[1] == 8:
@@ -805,9 +787,25 @@ class FrankaDNNE(VecTask):
         self.compute_observations()
         self.compute_reward(self.actions)
 
-        # debug viz
-        if self.viewer and self.debug_viz:
+        # Always render debug sphere for DNNE (environment is "always debug")
+        if self.viewer:
+            # Clear any previous lines
             self.gym.clear_lines(self.viewer)
+            
+            # Render debug sphere if position is available (only for env 0)
+            if hasattr(self, 'debug_sphere_pos') and self.debug_sphere_pos is not None:
+                # Create transform for the debug sphere position
+                sphere_pose = gymapi.Transform()
+                sphere_pose.p = gymapi.Vec3(
+                    self.debug_sphere_pos[0],
+                    self.debug_sphere_pos[1],
+                    self.debug_sphere_pos[2]
+                )
+                # Draw the wireframe sphere at the specified position
+                gymutil.draw_lines(self.debug_sphere_geom, self.gym, self.viewer, self.envs[0], sphere_pose)
+        
+        # Optional debug viz for axes (only when debug_viz is enabled)
+        if self.viewer and self.debug_viz:
             self.gym.refresh_rigid_body_state_tensor(self.sim)
 
             # Grab relevant states to visualize
