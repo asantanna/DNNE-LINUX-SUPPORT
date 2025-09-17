@@ -562,6 +562,10 @@ class FrankaDNNE(VecTask):
             torch.ones_like(self.reset_buf),
             self.reset_buf
         )
+        
+        # Debug logging for episode completion
+        # if self.reset_buf.any():
+        #     print(f"Episode done! progress_buf={self.progress_buf[0].item()}/{self.max_episode_length}, target_reached={target_reached[0].item()}, gripper_too_low={gripper_too_low[0].item()}")
 
     def compute_observations(self):
         self._refresh()
